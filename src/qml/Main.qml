@@ -31,6 +31,10 @@ Window {
 
     // --- Account data model ---
     property int currentAccountIndex: 0
+    // NOTE: Adding a new account requires updating three places:
+    //   1. This accounts array (display metadata)
+    //   2. A new WebEngineProfile above (for isolated storage)
+    //   3. A new AccountView inside accountStack below
     property var accounts: [
         { name: "Personal", initial: "P", unreadCount: 0 },
         { name: "Work",     initial: "W", unreadCount: 0 }
@@ -58,40 +62,56 @@ Window {
         onActivated: switchAccount(1)
     }
 
-    // --- Layout: sidebar + webview ---
-    RowLayout {
+    // --- Layout: title bar on top, sidebar + webview below ---
+    ColumnLayout {
         anchors.fill: parent
         spacing: 0
 
-        // Account sidebar (transparent with matte pills)
-        AccountSidebar {
-            id: accountSidebar
-            Layout.fillHeight: true
-            selectedIndex: root.currentAccountIndex
-            accountModel: root.accounts
-
-            onAccountSelected: function(index) {
-                root.switchAccount(index);
-            }
+        TitleBar {
+            id: titleBar
+            Layout.fillWidth: true
+            currentTitle: root.title
+            targetWindow: root
         }
 
-        // WebEngine views
-        StackLayout {
-            id: accountStack
+        RowLayout {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            currentIndex: root.currentAccountIndex
+            spacing: 0
 
-            AccountView {
-                id: personalView
-                profile: personalProfile
-                onUnreadCountChanged: root.updateUnreadCount(0, unreadCount)
+            // Account sidebar (transparent with matte pills)
+            AccountSidebar {
+                id: accountSidebar
+                Layout.fillHeight: true
+                selectedIndex: root.currentAccountIndex
+                accountModel: root.accounts
+
+                onAccountSelected: function(index) {
+                    root.switchAccount(index);
+                }
             }
 
-            AccountView {
-                id: workView
-                profile: workProfile
-                onUnreadCountChanged: root.updateUnreadCount(1, unreadCount)
+            // WebEngine views — both created eagerly at startup so each
+            // profile's network stack and storage are ready immediately.
+            // With only 2 accounts this is acceptable; if the account count
+            // grows, consider switching to Loader with active: false.
+            StackLayout {
+                id: accountStack
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                currentIndex: root.currentAccountIndex
+
+                AccountView {
+                    id: personalView
+                    profile: personalProfile
+                    onUnreadCountChanged: root.updateUnreadCount(0, unreadCount)
+                }
+
+                AccountView {
+                    id: workView
+                    profile: workProfile
+                    onUnreadCountChanged: root.updateUnreadCount(1, unreadCount)
+                }
             }
         }
     }

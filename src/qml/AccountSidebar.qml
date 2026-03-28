@@ -1,5 +1,4 @@
 import QtQuick
-import QtQuick.Controls
 import QtQuick.Layouts
 
 Rectangle {
@@ -24,8 +23,15 @@ Rectangle {
             model: sidebar.accountModel
 
             Rectangle {
+                id: accountButton
                 required property var modelData
                 required property int index
+
+                // hovered is driven declaratively by the MouseArea so the
+                // Behavior animations always have clean, binding-based input.
+                // Directly setting parent.opacity from onEntered/onExited
+                // bypasses the Behavior and causes animation conflicts.
+                property bool hovered: false
 
                 Layout.alignment: Qt.AlignHCenter
                 width: 36
@@ -34,7 +40,7 @@ Rectangle {
                 color: sidebar.selectedIndex === index
                     ? "#1a1a1a"
                     : "#0d0d0d"
-                opacity: sidebar.selectedIndex === index ? 1.0 : 0.7
+                opacity: (sidebar.selectedIndex === index || hovered) ? 1.0 : 0.7
                 border.width: sidebar.selectedIndex === index ? 1.5 : 0
                 border.color: "#3a3a3a"
 
@@ -80,11 +86,8 @@ Rectangle {
                     cursorShape: Qt.PointingHandCursor
                     hoverEnabled: true
                     onClicked: sidebar.accountSelected(index)
-                    onEntered: parent.opacity = 1.0
-                    onExited: {
-                        if (sidebar.selectedIndex !== index)
-                            parent.opacity = 0.7;
-                    }
+                    onEntered: accountButton.hovered = true
+                    onExited: accountButton.hovered = false
                 }
             }
         }

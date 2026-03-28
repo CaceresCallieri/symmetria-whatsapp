@@ -1,9 +1,19 @@
 (function() {
     "use strict";
 
+    // Set to true during development to get mode-transition logs in the
+    // browser console. Leave false in production to reduce noise.
+    const DEBUG = false;
+
     const MODE = { NORMAL: "NORMAL", INSERT: "INSERT" };
     let currentMode = MODE.INSERT; // Start in INSERT so WhatsApp loads normally
 
+    // NOTE: These selectors duplicate resources/selectors.json, which is the
+    // intended single source of truth for WhatsApp DOM selectors. The JSON is
+    // bundled as a QRC resource for future tooling (e.g., selector validation
+    // or codegen), but the JS must be self-contained at injection time because
+    // it runs inside the WebEngine page context without access to QRC.
+    // If selectors change, update BOTH this file and selectors.json.
     const SELECTORS = {
         chatList: "[data-testid='chat-list']",
         chatItem: "[role='listitem']",
@@ -115,6 +125,7 @@
         currentMode = MODE.NORMAL;
         document.activeElement?.blur();
         updateIndicator();
+        if (DEBUG) console.log("[Symmetria] Mode → NORMAL");
 
         // If no chat is selected yet, select the first one
         if (selectedChatIndex < 0) {
@@ -128,6 +139,7 @@
     function enterInsertMode() {
         currentMode = MODE.INSERT;
         updateIndicator();
+        if (DEBUG) console.log("[Symmetria] Mode → INSERT");
         focusMessageInput();
     }
 
@@ -150,7 +162,7 @@
         const chats = getChatItems();
 
         switch (e.key) {
-            case "j": // Next chat
+            case "j": { // Next chat
                 e.preventDefault();
                 e.stopPropagation();
                 if (chats.length > 0) {
@@ -158,8 +170,9 @@
                     highlightChat(next);
                 }
                 break;
+            }
 
-            case "k": // Previous chat
+            case "k": { // Previous chat
                 e.preventDefault();
                 e.stopPropagation();
                 if (chats.length > 0) {
@@ -167,33 +180,38 @@
                     highlightChat(prev);
                 }
                 break;
+            }
 
-            case "Enter": // Open selected chat and enter Insert mode
+            case "Enter": { // Open selected chat and enter Insert mode
                 e.preventDefault();
                 e.stopPropagation();
                 openSelectedChat();
                 // Brief delay to let WhatsApp render the conversation
                 setTimeout(() => enterInsertMode(), 150);
                 break;
+            }
 
-            case "i": // Enter Insert mode directly
+            case "i": { // Enter Insert mode directly
                 e.preventDefault();
                 e.stopPropagation();
                 enterInsertMode();
                 break;
+            }
 
-            case "/": // Focus search
+            case "/": { // Focus search
                 e.preventDefault();
                 e.stopPropagation();
                 focusSearch();
                 currentMode = MODE.INSERT; // Search needs typing
                 updateIndicator();
                 break;
+            }
 
-            case "g": // gg = first chat (wait for second g)
+            case "g": { // gg = first chat (wait for second g)
                 e.preventDefault();
                 e.stopPropagation();
-                // Simple gg: listen for next key
+                // Listen for a second 'g' within 500ms to complete the gg chord.
+                // Wrapped in a block so `const` is scoped correctly in strict mode.
                 const ggHandler = function(e2) {
                     document.removeEventListener("keydown", ggHandler, true);
                     if (e2.key === "g") {
@@ -203,19 +221,21 @@
                     }
                 };
                 document.addEventListener("keydown", ggHandler, true);
-                // Timeout to cancel if no second key
+                // Cancel the chord if no second key arrives within 500ms
                 setTimeout(() => {
                     document.removeEventListener("keydown", ggHandler, true);
                 }, 500);
                 break;
+            }
 
-            case "G": // Last chat
+            case "G": { // Last chat
                 e.preventDefault();
                 e.stopPropagation();
                 if (chats.length > 0) {
                     highlightChat(chats.length - 1);
                 }
                 break;
+            }
 
             default:
                 break;

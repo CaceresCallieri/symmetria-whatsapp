@@ -7,13 +7,19 @@ Rectangle {
     property string currentTitle: "Symmetria WhatsApp"
     property var targetWindow: null
 
+    // Button geometry constants — used both in the Repeater delegate and
+    // in the drag area margin so the values stay in sync automatically.
+    readonly property int buttonWidth: 36
+    readonly property int buttonCount: 3
+    readonly property int layoutRightMargin: 4
+
     height: 36
     color: "#1a1a2e"
 
     RowLayout {
         anchors.fill: parent
         anchors.leftMargin: 12
-        anchors.rightMargin: 4
+        anchors.rightMargin: titleBar.layoutRightMargin
         spacing: 0
 
         // Title text
@@ -39,7 +45,7 @@ Rectangle {
                 required property var modelData
                 required property int index
 
-                width: 36
+                width: titleBar.buttonWidth
                 height: 28
                 radius: 4
                 color: buttonArea.containsMouse
@@ -79,10 +85,12 @@ Rectangle {
         }
     }
 
-    // Drag area (covers everything except the buttons on the right)
+    // Drag area covers everything except the window control buttons.
+    // The right margin is derived from button geometry constants so it
+    // stays correct if button width or count changes.
     MouseArea {
         anchors.fill: parent
-        anchors.rightMargin: 116 // 3 buttons × ~36px + spacing
+        anchors.rightMargin: titleBar.buttonCount * titleBar.buttonWidth + titleBar.layoutRightMargin
         onPressed: {
             if (titleBar.targetWindow)
                 titleBar.targetWindow.startSystemMove();
