@@ -1,0 +1,11 @@
+{
+    "chatList": "[data-testid='chat-list']",
+    "chatItem": "[role='listitem']",
+    "conversationPanel": "[data-testid='conversation-panel']",
+    "messageInput": "[data-testid='conversation-compose-box-input']",
+    "messageContainer": "[data-testid='msg-container']",
+    "messageRow": "[role='row']",
+    "searchInput": "[data-testid='search']",
+    "cellFrameContainer": "[data-testid='cell-frame-container']",
+    "chatListSearch": "[data-testid='chat-list-search']"
+}
