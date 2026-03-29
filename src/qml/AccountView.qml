@@ -62,7 +62,9 @@ Rectangle {
 
         settings.javascriptEnabled: true
         settings.localStorageEnabled: true
-        settings.javascriptCanAccessClipboard: true
+        // javascriptCanAccessClipboard grants read+write clipboard access; WhatsApp
+        // Web only needs paste. Disable broad clipboard access and keep paste only.
+        settings.javascriptCanAccessClipboard: false
         settings.javascriptCanPaste: true
         settings.playbackRequiresUserGesture: false
         settings.scrollAnimatorEnabled: false

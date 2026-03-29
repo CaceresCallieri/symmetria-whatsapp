@@ -6,6 +6,7 @@
 #include <QStandardPaths>
 #include <QtWebEngineQuick/qquickwebengineprofile.h>
 #include <QWebEngineScript>
+#include <QCoreApplication>
 
 // Creates and manages persistent WebEngine profiles from C++.
 //
@@ -17,6 +18,12 @@
 // The fix (used by Whatsie, ZapZap, and other mature wrappers): create
 // profiles in C++ using the constructor that takes storageName, which
 // sets it at construction time before the browser context is created.
+//
+// DEPENDENCY: QCoreApplication::setApplicationName() and setOrganizationName()
+// must be called before this singleton is first instantiated. ProfileSetup is
+// accessed from QML after the engine loads, which happens after main() sets
+// these values, so the ordering is safe. Do not move profile construction to
+// before QGuiApplication is fully configured.
 class ProfileSetup : public QObject
 {
     Q_OBJECT
@@ -29,32 +36,37 @@ class ProfileSetup : public QObject
 public:
     explicit ProfileSetup(QObject *parent = nullptr)
         : QObject(parent)
-        , m_personalProfile(nullptr)
-        , m_workProfile(nullptr)
     {
-        const QString userAgent =
-            QStringLiteral("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
-                           "(KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36");
-
-        m_personalProfile = createProfile(QStringLiteral("personal"), userAgent);
-        m_workProfile = createProfile(QStringLiteral("work"), userAgent);
+        m_personalProfile = createProfile(QStringLiteral("personal"));
+        m_workProfile = createProfile(QStringLiteral("work"));
     }
 
     QQuickWebEngineProfile *personalProfile() const { return m_personalProfile; }
     QQuickWebEngineProfile *workProfile() const { return m_workProfile; }
 
 private:
+    static constexpr auto k_userAgent =
+        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36";
+
     QQuickWebEngineProfile *m_personalProfile;
     QQuickWebEngineProfile *m_workProfile;
 
-    QQuickWebEngineProfile *createProfile(const QString &storageName,
-                                          const QString &userAgent)
+    QQuickWebEngineProfile *createProfile(const QString &storageName)
     {
+        // Guard against misconfigured startup order: storage paths derived
+        // from QStandardPaths::AppDataLocation embed the application name.
+        // If applicationName is empty the paths collapse to a generic location
+        // and multiple apps could share storage.
+        Q_ASSERT_X(!QCoreApplication::applicationName().isEmpty(),
+                   "ProfileSetup::createProfile",
+                   "applicationName must be set before profiles are created");
+
         // Using the constructor that takes storageName ensures the browser
         // context is created as persistent from the very start.
         auto *profile = new QQuickWebEngineProfile(storageName, this);
 
-        profile->setHttpUserAgent(userAgent);
+        profile->setHttpUserAgent(QLatin1StringView(k_userAgent));
         profile->setPersistentCookiesPolicy(
             QQuickWebEngineProfile::AllowPersistentCookies);
         profile->setHttpCacheType(
@@ -81,12 +93,16 @@ private:
         return profile;
     }
 
-    void installStorageScript(QQuickWebEngineProfile *profile)
+    static void installStorageScript(QQuickWebEngineProfile *profile)
     {
-        // Access userScripts as a Q_PROPERTY, then call insert() via
-        // QMetaObject since the script collection type is private API.
+        // QQuickWebEngineScriptCollection is a private Qt type (forward-declared
+        // only in the public header). Access it via the userScripts Q_PROPERTY
+        // as QVariant → QObject*, then dispatch insert() via QMetaObject since
+        // insert() is Q_INVOKABLE on the private type. This is the documented
+        // workaround for accessing private-API collections from C++ code that
+        // cannot include Qt private headers.
         QVariant v = profile->property("userScripts");
-        QObject *scripts = qvariant_cast<QObject*>(v);
+        QObject *scripts = qvariant_cast<QObject *>(v);
 
         if (!scripts) {
             qWarning() << "[Symmetria] Could not get userScripts from profile";

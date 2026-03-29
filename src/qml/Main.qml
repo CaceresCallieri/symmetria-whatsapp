@@ -19,15 +19,15 @@ Window {
     // the storageName is set at construction time. QML's WebEngineProfile
     // creates the browser context before property bindings are applied,
     // which causes profiles to start off-the-record on Qt 6.9+.
-    property var personalProfile: ProfileSetup.personalProfile
-    property var workProfile: ProfileSetup.workProfile
+    property WebEngineProfile personalProfile: ProfileSetup.personalProfile
+    property WebEngineProfile workProfile: ProfileSetup.workProfile
 
     // --- Account data model ---
     property int currentAccountIndex: 0
     // NOTE: Adding a new account requires updating three places:
     //   1. This accounts array (display metadata)
-    //   2. A new WebEngineProfile above (for isolated storage)
-    //   3. A new AccountView inside accountStack below
+    //   2. ProfileSetup.h in C++ (add a new profile property and createProfile call)
+    //   3. The AccountView entries inside accountStack below
     property var accounts: [
         { name: "Personal", initial: "P", unreadCount: 0 },
         { name: "Work",     initial: "W", unreadCount: 0 }
