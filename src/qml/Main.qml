@@ -61,23 +61,19 @@ Window {
         sequence: "Ctrl+2"
         onActivated: switchAccount(1)
     }
+    Shortcut {
+        sequence: "Ctrl+Tab"
+        onActivated: switchAccount((currentAccountIndex + 1) % accounts.length)
+    }
+    Shortcut {
+        sequence: "Ctrl+Shift+Tab"
+        onActivated: switchAccount((currentAccountIndex - 1 + accounts.length) % accounts.length)
+    }
 
-    // --- Layout: title bar on top, sidebar + webview below ---
-    ColumnLayout {
+    // --- Layout: sidebar + webview ---
+    RowLayout {
         anchors.fill: parent
         spacing: 0
-
-        TitleBar {
-            id: titleBar
-            Layout.fillWidth: true
-            currentTitle: root.title
-            targetWindow: root
-        }
-
-        RowLayout {
-            Layout.fillWidth: true
-            Layout.fillHeight: true
-            spacing: 0
 
             // Account sidebar (transparent with matte pills)
             AccountSidebar {
@@ -113,7 +109,6 @@ Window {
                     onUnreadCountChanged: root.updateUnreadCount(1, unreadCount)
                 }
             }
-        }
     }
 
     Component.onCompleted: {

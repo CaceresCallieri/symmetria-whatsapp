@@ -6,26 +6,11 @@ Rectangle {
 
     required property WebEngineProfile profile
     property int unreadCount: 0
+    property bool navInjected: false
 
     radius: 12
     color: "#1a1a1a"
     clip: true
-
-    // Inject keyboard navigation via WebEngineScript so it is bound
-    // to the profile lifecycle rather than managed manually per load.
-    // Injection happens at DocumentReady, which fires after each full
-    // page load — no manual navInjected flag needed.
-    WebEngineScript {
-        id: keyboardNavScript
-        name: "symmetria-keyboard-nav"
-        sourceUrl: "qrc:///keyboard-nav.js"
-        injectionPoint: WebEngineScript.DocumentReady
-        worldId: WebEngineScript.MainWorld
-    }
-
-    Component.onCompleted: {
-        accountView.profile.scripts.insert(keyboardNavScript);
-    }
 
     WebEngineView {
         id: webView
@@ -43,6 +28,7 @@ Rectangle {
             if (loadingInfo.status === WebEngineView.LoadSucceededStatus) {
                 console.log("[Symmetria] WhatsApp Web loaded for profile:",
                     accountView.profile.storageName);
+                accountView.injectKeyboardNav();
             } else if (loadingInfo.status === WebEngineView.LoadFailedStatus) {
                 console.error("[Symmetria] Failed to load WhatsApp Web:",
                     loadingInfo.errorString);
@@ -51,9 +37,6 @@ Rectangle {
 
         onPermissionRequested: function(request) {
             console.log("[Symmetria] Permission requested:", request.permissionType);
-            // Grant only the permissions WhatsApp Web legitimately needs.
-            // Camera, geolocation, and desktop capture are denied to prevent
-            // any rogue content from silently accessing sensitive hardware.
             switch (request.permissionType) {
                 case WebEnginePermission.MediaAudioCapture:
                 case WebEnginePermission.Notifications:
@@ -74,9 +57,23 @@ Rectangle {
         settings.localStorageEnabled: true
         settings.javascriptCanAccessClipboard: true
         settings.javascriptCanPaste: true
-        // localContentCanAccessRemoteUrls is not needed — this view loads
-        // only remote content (web.whatsapp.com). Enabling it would weaken
-        // cross-origin policy without benefit.
         settings.scrollAnimatorEnabled: false
+    }
+
+    function injectKeyboardNav() {
+        if (accountView.navInjected) return;
+
+        var xhr = new XMLHttpRequest();
+        xhr.open("GET", "qrc:///keyboard-nav.js", false);
+        xhr.send();
+
+        if (xhr.status === 200) {
+            webView.runJavaScript(xhr.responseText);
+            accountView.navInjected = true;
+            console.log("[Symmetria] Keyboard nav injected for:",
+                accountView.profile.storageName);
+        } else {
+            console.error("[Symmetria] Failed to load keyboard-nav.js");
+        }
     }
 }
