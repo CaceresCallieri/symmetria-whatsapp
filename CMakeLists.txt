@@ -28,7 +28,6 @@ qt_add_qml_module(${PROJECT_NAME}
     VERSION 1.0
     QML_FILES
         src/qml/Main.qml
-        src/qml/TitleBar.qml
         src/qml/AccountSidebar.qml
         src/qml/AccountView.qml
 )

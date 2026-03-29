@@ -75,40 +75,40 @@ Window {
         anchors.fill: parent
         spacing: 0
 
-            // Account sidebar (transparent with matte pills)
-            AccountSidebar {
-                id: accountSidebar
-                Layout.fillHeight: true
-                selectedIndex: root.currentAccountIndex
-                accountModel: root.accounts
+        // Account sidebar (transparent with matte pills)
+        AccountSidebar {
+            id: accountSidebar
+            Layout.fillHeight: true
+            selectedIndex: root.currentAccountIndex
+            accountModel: root.accounts
 
-                onAccountSelected: function(index) {
-                    root.switchAccount(index);
-                }
+            onAccountSelected: function(index) {
+                root.switchAccount(index);
+            }
+        }
+
+        // WebEngine views — both created eagerly at startup so each
+        // profile's network stack and storage are ready immediately.
+        // With only 2 accounts this is acceptable; if the account count
+        // grows, consider switching to Loader with active: false.
+        StackLayout {
+            id: accountStack
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            currentIndex: root.currentAccountIndex
+
+            AccountView {
+                id: personalView
+                profile: personalProfile
+                onUnreadCountChanged: root.updateUnreadCount(0, unreadCount)
             }
 
-            // WebEngine views — both created eagerly at startup so each
-            // profile's network stack and storage are ready immediately.
-            // With only 2 accounts this is acceptable; if the account count
-            // grows, consider switching to Loader with active: false.
-            StackLayout {
-                id: accountStack
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                currentIndex: root.currentAccountIndex
-
-                AccountView {
-                    id: personalView
-                    profile: personalProfile
-                    onUnreadCountChanged: root.updateUnreadCount(0, unreadCount)
-                }
-
-                AccountView {
-                    id: workView
-                    profile: workProfile
-                    onUnreadCountChanged: root.updateUnreadCount(1, unreadCount)
-                }
+            AccountView {
+                id: workView
+                profile: workProfile
+                onUnreadCountChanged: root.updateUnreadCount(1, unreadCount)
             }
+        }
     }
 
     Component.onCompleted: {

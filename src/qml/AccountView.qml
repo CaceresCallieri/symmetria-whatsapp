@@ -32,11 +32,17 @@ Rectangle {
             } else if (loadingInfo.status === WebEngineView.LoadFailedStatus) {
                 console.error("[Symmetria] Failed to load WhatsApp Web:",
                     loadingInfo.errorString);
+                // Reset injection flag so a subsequent successful reload
+                // re-injects keyboard nav rather than silently skipping it.
+                accountView.navInjected = false;
             }
         }
 
         onPermissionRequested: function(request) {
             console.log("[Symmetria] Permission requested:", request.permissionType);
+            // Grant only the permissions WhatsApp Web legitimately needs.
+            // Camera, geolocation, and desktop capture are denied to prevent
+            // any rogue content from silently accessing sensitive hardware.
             switch (request.permissionType) {
                 case WebEnginePermission.MediaAudioCapture:
                 case WebEnginePermission.Notifications:
@@ -73,7 +79,8 @@ Rectangle {
             console.log("[Symmetria] Keyboard nav injected for:",
                 accountView.profile.storageName);
         } else {
-            console.error("[Symmetria] Failed to load keyboard-nav.js");
+            console.error("[Symmetria] Failed to load keyboard-nav.js from QRC — status:",
+                xhr.status, "profile:", accountView.profile.storageName);
         }
     }
 }
