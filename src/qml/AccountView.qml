@@ -19,6 +19,7 @@ Rectangle {
         url: "https://web.whatsapp.com"
 
         onTitleChanged: function(pageTitle) {
+            if (!pageTitle) return;
             let match = pageTitle.match(/\((\d+)\)/);
             let count = match ? parseInt(match[1], 10) : 0;
             accountView.unreadCount = count;
@@ -63,6 +64,7 @@ Rectangle {
         settings.localStorageEnabled: true
         settings.javascriptCanAccessClipboard: true
         settings.javascriptCanPaste: true
+        settings.playbackRequiresUserGesture: false
         settings.scrollAnimatorEnabled: false
     }
 

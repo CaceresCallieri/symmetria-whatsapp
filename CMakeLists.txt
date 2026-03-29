@@ -26,6 +26,8 @@ qt_add_executable(${PROJECT_NAME}
 qt_add_qml_module(${PROJECT_NAME}
     URI com.symmetria.whatsapp
     VERSION 1.0
+    SOURCES
+        src/ProfileSetup.h
     QML_FILES
         src/qml/Main.qml
         src/qml/AccountSidebar.qml
@@ -46,6 +48,8 @@ qt_add_resources(${PROJECT_NAME} "selectors"
     FILES
         resources/selectors.json
 )
+
+target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_SOURCE_DIR}/src)
 
 target_link_libraries(${PROJECT_NAME} PRIVATE
     Qt6::Core
