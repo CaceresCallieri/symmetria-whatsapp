@@ -49,6 +49,9 @@ qt_add_resources(${PROJECT_NAME} "selectors"
         resources/selectors.json
 )
 
+# Bundle app icons as Qt resources under the ":/icons/" prefix.
+# 1024x1024 is intentionally excluded — it bloats the binary (~446 KB) with no
+# benefit at runtime; compositors use the XDG icon theme install below instead.
 qt_add_resources(${PROJECT_NAME} "icons"
     PREFIX "/icons"
     BASE "resources/icons"
@@ -58,7 +61,6 @@ qt_add_resources(${PROJECT_NAME} "icons"
         resources/icons/whatsapp-128x128.png
         resources/icons/whatsapp-256x256.png
         resources/icons/whatsapp-512x512.png
-        resources/icons/whatsapp-1024x1024.png
 )
 
 target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_SOURCE_DIR}/src)
@@ -69,4 +71,31 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     Qt6::Qml
     Qt6::Quick
     Qt6::WebEngineQuick
+)
+
+# Install app icons into the XDG hicolor icon theme so the .desktop entry
+# (Icon=symmetria-whatsapp) resolves correctly in app launchers and taskbars.
+install(FILES resources/icons/whatsapp-16x16.png
+    DESTINATION share/icons/hicolor/16x16/apps
+    RENAME symmetria-whatsapp.png
+)
+install(FILES resources/icons/whatsapp-32x32.png
+    DESTINATION share/icons/hicolor/32x32/apps
+    RENAME symmetria-whatsapp.png
+)
+install(FILES resources/icons/whatsapp-128x128.png
+    DESTINATION share/icons/hicolor/128x128/apps
+    RENAME symmetria-whatsapp.png
+)
+install(FILES resources/icons/whatsapp-256x256.png
+    DESTINATION share/icons/hicolor/256x256/apps
+    RENAME symmetria-whatsapp.png
+)
+install(FILES resources/icons/whatsapp-512x512.png
+    DESTINATION share/icons/hicolor/512x512/apps
+    RENAME symmetria-whatsapp.png
+)
+install(FILES resources/icons/whatsapp-1024x1024.png
+    DESTINATION share/icons/hicolor/1024x1024/apps
+    RENAME symmetria-whatsapp.png
 )
