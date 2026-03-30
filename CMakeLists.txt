@@ -49,6 +49,18 @@ qt_add_resources(${PROJECT_NAME} "selectors"
         resources/selectors.json
 )
 
+qt_add_resources(${PROJECT_NAME} "icons"
+    PREFIX "/icons"
+    BASE "resources/icons"
+    FILES
+        resources/icons/whatsapp-16x16.png
+        resources/icons/whatsapp-32x32.png
+        resources/icons/whatsapp-128x128.png
+        resources/icons/whatsapp-256x256.png
+        resources/icons/whatsapp-512x512.png
+        resources/icons/whatsapp-1024x1024.png
+)
+
 target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_SOURCE_DIR}/src)
 
 target_link_libraries(${PROJECT_NAME} PRIVATE
