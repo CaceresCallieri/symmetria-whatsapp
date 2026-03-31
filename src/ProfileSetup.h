@@ -87,8 +87,8 @@ private:
         profile->setCachePath(cachePath + "/" + storageName);
 
         // Set default download directory to the system Downloads folder
-        // (e.g. ~/Downloads). The actual save path is chosen by the user via
-        // a FileDialog in QML — this just sets the dialog's initial folder.
+        // (e.g. ~/Downloads). DownloadHandler presents a native Save As dialog
+        // via the XDG Desktop Portal; this just sets the portal's initial folder.
         profile->setDownloadPath(
             QStandardPaths::writableLocation(QStandardPaths::DownloadLocation));
 
