@@ -7,6 +7,7 @@
 #include <QtWebEngineQuick/qquickwebengineprofile.h>
 #include <QWebEngineScript>
 #include <QCoreApplication>
+#include "DownloadHandler.h"
 
 // Creates and manages persistent WebEngine profiles from C++.
 //
@@ -39,6 +40,10 @@ public:
     {
         m_personalProfile = createProfile(QStringLiteral("personal"));
         m_workProfile = createProfile(QStringLiteral("work"));
+
+        m_downloadHandler = new DownloadHandler(this);
+        m_downloadHandler->attachToProfile(m_personalProfile);
+        m_downloadHandler->attachToProfile(m_workProfile);
     }
 
     QQuickWebEngineProfile *personalProfile() const { return m_personalProfile; }
@@ -51,6 +56,7 @@ private:
 
     QQuickWebEngineProfile *m_personalProfile;
     QQuickWebEngineProfile *m_workProfile;
+    DownloadHandler *m_downloadHandler;
 
     QQuickWebEngineProfile *createProfile(const QString &storageName)
     {
@@ -79,6 +85,12 @@ private:
             QStandardPaths::writableLocation(QStandardPaths::CacheLocation);
         profile->setPersistentStoragePath(dataPath + "/" + storageName);
         profile->setCachePath(cachePath + "/" + storageName);
+
+        // Set default download directory to the system Downloads folder
+        // (e.g. ~/Downloads). The actual save path is chosen by the user via
+        // a FileDialog in QML — this just sets the dialog's initial folder.
+        profile->setDownloadPath(
+            QStandardPaths::writableLocation(QStandardPaths::DownloadLocation));
 
         // Install storage persistence override script.
         // QWebEngineScript with DocumentCreation injection point runs before

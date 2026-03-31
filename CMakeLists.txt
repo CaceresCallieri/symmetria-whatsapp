@@ -15,6 +15,7 @@ find_package(Qt6 6.5 REQUIRED COMPONENTS
     Qml
     Quick
     WebEngineQuick
+    DBus
 )
 
 qt_standard_project_setup(REQUIRES 6.5)
@@ -28,6 +29,7 @@ qt_add_qml_module(${PROJECT_NAME}
     VERSION 1.0
     SOURCES
         src/ProfileSetup.h
+        src/DownloadHandler.h
     QML_FILES
         src/qml/Main.qml
         src/qml/AccountSidebar.qml
@@ -71,6 +73,7 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     Qt6::Qml
     Qt6::Quick
     Qt6::WebEngineQuick
+    Qt6::DBus
 )
 
 # Install app icons into the XDG hicolor icon theme so the .desktop entry
