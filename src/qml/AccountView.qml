@@ -70,6 +70,12 @@ Rectangle {
         settings.scrollAnimatorEnabled: false
     }
 
+    function reload() {
+        accountView.navInjected = false;
+        webView.reload();
+        console.log("[Symmetria] Reloading profile:", accountView.profile.storageName);
+    }
+
     function injectKeyboardNav() {
         if (accountView.navInjected) return;
 

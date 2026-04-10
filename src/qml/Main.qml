@@ -62,6 +62,13 @@ Window {
         sequence: "Ctrl+Shift+Tab"
         onActivated: switchAccount((currentAccountIndex - 1 + accounts.length) % accounts.length)
     }
+    Shortcut {
+        sequence: "Ctrl+R"
+        onActivated: {
+            let view = accountStack.children[currentAccountIndex];
+            if (view && view.reload) view.reload();
+        }
+    }
 
     // --- Layout: sidebar + webview ---
     RowLayout {
