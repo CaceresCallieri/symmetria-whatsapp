@@ -10,7 +10,7 @@ Rectangle {
     signal accountSelected(int index)
 
     width: 48
-    color: "transparent"
+    color: Qt.rgba(0, 0, 0, 0.6)
 
     ColumnLayout {
         anchors.fill: parent

@@ -16,6 +16,10 @@ Qt6/QML WhatsApp wrapper with multi-account support and vim-like keyboard naviga
 - Selector registry (`resources/selectors.json`) maps logical elements to CSS selectors
 - Notifications forwarded via D-Bus to swaync
 
+## Workflow
+
+- **Auto-rebuild after changes:** After modifying any source file (C++, QML, JS, JSON resources), always run `cmake --build build` automatically so the user only needs to relaunch `./build/symmetria-whatsapp`.
+
 ## Key Decisions
 
 - **Qt6/QML over QuickShell:** QuickShell lacks WebEngine support and is designed for shell components, not standalone apps
