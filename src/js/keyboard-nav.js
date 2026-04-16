@@ -21,14 +21,9 @@
         textbox: "[role='textbox']",
     };
 
-    // Highlight styles — use inset box-shadow to tint the background without
-    // overriding WhatsApp's native backgrounds (hover, active, etc.).
-    // The 1000px spread creates a full-area color overlay at low alpha;
-    // the 3px left shadow acts as a vim cursorline accent bar.
-    // Chat highlight uses border-left (not box-shadow) to avoid top/bottom
-    // green bleed through gaps between adjacent rows. The negative margin
-    // compensates for the border width so the row doesn't shift right.
-    // Message highlight keeps box-shadow for the background tint overlay.
+    // Message highlight uses inset box-shadow to layer a green tint on top of
+    // WhatsApp's native backgrounds without overriding them. The 1000px spread
+    // creates a full-area overlay; the 3px left shadow adds an accent bar.
     const HIGHLIGHT_STYLE = {
         message: "inset 3px 0 0 #5af78e, inset 0 0 0 1000px rgba(90, 247, 142, 0.10)",
     };
@@ -137,6 +132,8 @@
         return Array.from(grid.querySelectorAll(SELECTORS.chatItem));
     }
 
+    // Chat highlight uses border-left (not box-shadow) — inset box-shadow
+    // bleeds through the gaps between adjacent rows in WhatsApp's chat list.
     function highlightChat(index) {
         const chats = getChatItems();
         chats.forEach(chat => {
