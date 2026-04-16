@@ -177,7 +177,7 @@
             const target = document.elementFromPoint(x, y);
 
             if (DEBUG) console.log("[Symmetria] Opening chat at index", selectedChatIndex,
-                "hit:", target ? target.tagName + "." + (target.className || "").slice(0, 30) : "null");
+                "hit:", target ? target.tagName + "." + (typeof target.className === "string" ? target.className : (target.className.baseVal || "")).slice(0, 30) : "null");
 
             if (target) {
                 simulateClick(target);
@@ -226,6 +226,8 @@
         if (selectedMessageIndex < 0 || selectedMessageIndex >= messages.length) return;
 
         const row = messages[selectedMessageIndex];
+        // .message-in / .message-out are WhatsApp's structural layout classes (not obfuscated).
+        // If the context menu stops working, check whether these class names have changed.
         const container = row.querySelector('.message-in, .message-out');
 
         let cx, cy;
@@ -245,12 +247,12 @@
         }
 
         const target = document.elementFromPoint(cx, cy) || container || row;
-        const opts = { bubbles: true, cancelable: true, view: window, clientX: cx, clientY: cy, button: 2 };
+        const opts = { bubbles: true, cancelable: true, view: window, clientX: cx, clientY: cy, button: 2 /* right-click */ };
         target.dispatchEvent(new MouseEvent("contextmenu", opts));
 
         if (DEBUG) console.log("[Symmetria] Context menu on message", selectedMessageIndex,
             "type:", container ? container.className.slice(0, 15) : "unknown",
-            "target:", target.tagName + "." + (target.className || "").slice(0, 30));
+            "target:", target.tagName + "." + (typeof target.className === "string" ? target.className : (target.className.baseVal || "")).slice(0, 30));
     }
 
     function isConversationOpen() {
