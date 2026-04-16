@@ -240,9 +240,8 @@
             clientX: cx, clientY: cy,
             pointerId: 1, pointerType: "mouse",
         };
-        hoverTarget.dispatchEvent(new PointerEvent("pointerenter", { ...pointerOpts, bubbles: false }));
+        hoverTarget.dispatchEvent(new PointerEvent("pointerenter", { ...pointerOpts, bubbles: false, cancelable: false }));
         hoverTarget.dispatchEvent(new PointerEvent("pointermove", pointerOpts));
-        hoverTarget.dispatchEvent(new MouseEvent("mouseover", { bubbles: true, cancelable: true, view: window, clientX: cx, clientY: cy }));
 
         // Wait for WhatsApp to render the arrow button, then click it
         setTimeout(() => {
@@ -252,19 +251,21 @@
                 simulateClick(clickTarget || arrow);
                 if (DEBUG) console.log("[Symmetria] Context menu opened for message", selectedMessageIndex);
             } else {
+                // Dump DOM state to help discover selector changes.
+                // Overlay always updates (even DEBUG=false) so the user
+                // gets visible feedback when the arrow isn't found.
+                const icons = row.querySelectorAll('[data-icon]');
+                const iconNames = Array.from(icons).map(el => el.getAttribute('data-icon'));
+                const buttons = row.querySelectorAll('[role="button"]');
                 if (DEBUG) {
-                    // Dump all data-icon values to help discover selector changes
-                    const icons = row.querySelectorAll('[data-icon]');
-                    const iconNames = Array.from(icons).map(el => el.getAttribute('data-icon'));
-                    const buttons = row.querySelectorAll('[role="button"]');
                     console.log("[Symmetria] DOM probe msg " + selectedMessageIndex +
                         " | data-icons: [" + iconNames.join(", ") + "]" +
                         " | buttons: " + buttons.length);
-                    updateDebugOverlay(
-                        "msg " + selectedMessageIndex +
-                        " icons:[" + iconNames.join(",") + "]" +
-                        " btns:" + buttons.length);
                 }
+                updateDebugOverlay(
+                    "msg " + selectedMessageIndex +
+                    " icons:[" + iconNames.join(",") + "]" +
+                    " btns:" + buttons.length);
             }
         }, 150);
     }
