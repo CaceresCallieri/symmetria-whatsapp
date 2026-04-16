@@ -37,6 +37,10 @@ Window {
         if (index < 0 || index >= accounts.length) return;
         currentAccountIndex = index;
         accountStack.currentIndex = index;
+        // Give keyboard focus to the new active view so key events
+        // reach the WebEngineView without needing a manual click.
+        let view = accountStack.children[index];
+        if (view && view.grabFocus) view.grabFocus();
     }
 
     function updateUnreadCount(accountIndex, count) {
@@ -67,6 +71,13 @@ Window {
         onActivated: {
             let view = accountStack.children[currentAccountIndex];
             if (view && view.reload) view.reload();
+        }
+    }
+    Shortcut {
+        sequence: "Tab"
+        onActivated: {
+            let view = accountStack.children[currentAccountIndex];
+            if (view && view.toggleContext) view.toggleContext();
         }
     }
 

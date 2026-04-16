@@ -1,12 +1,28 @@
 #include <QGuiApplication>
+#include <QFile>
 #include <QIcon>
 #include <QQmlApplicationEngine>
 #include <QStyleHints>
 #include <QtWebEngineQuick/qtwebenginequickglobal.h>
 #include "ProfileSetup.h"
 
+static constexpr auto k_logPath = "/tmp/symmetria-debug.log";
+
+void messageToFile(QtMsgType, const QMessageLogContext &, const QString &msg)
+{
+    static QFile file{QString::fromLatin1(k_logPath)};
+    if (!file.isOpen())
+        file.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text);
+    file.write(msg.toUtf8());
+    file.write("\n");
+    file.flush();
+    // Also keep stderr output for interactive use
+    fprintf(stderr, "%s\n", msg.toLocal8Bit().constData());
+}
+
 int main(int argc, char *argv[])
 {
+    qInstallMessageHandler(messageToFile);
     QCoreApplication::setAttribute(Qt::AA_ShareOpenGLContexts);
     qputenv("QML_XHR_ALLOW_FILE_READ", "1");
     QtWebEngineQuick::initialize();

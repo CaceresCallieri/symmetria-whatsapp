@@ -60,6 +60,14 @@ Rectangle {
             Qt.openUrlExternally(request.requestedUrl);
         }
 
+        // Forward JavaScript console messages to Qt's stdout so debug
+        // output from keyboard-nav.js is visible in the terminal.
+        onJavaScriptConsoleMessage: function(level, message, lineNumber, sourceID) {
+            if (message.startsWith("[Symmetria]")) {
+                console.log(message);
+            }
+        }
+
         settings.javascriptEnabled: true
         settings.localStorageEnabled: true
         // javascriptCanAccessClipboard grants read+write clipboard access; WhatsApp
@@ -68,6 +76,14 @@ Rectangle {
         settings.javascriptCanPaste: true
         settings.playbackRequiresUserGesture: false
         settings.scrollAnimatorEnabled: false
+    }
+
+    function grabFocus() {
+        webView.forceActiveFocus();
+    }
+
+    function toggleContext() {
+        webView.runJavaScript("window.__symmetriaToggleContext && window.__symmetriaToggleContext()");
     }
 
     function reload() {
@@ -86,6 +102,9 @@ Rectangle {
         if (xhr.status === 200) {
             webView.runJavaScript(xhr.responseText);
             accountView.navInjected = true;
+            // Give the WebEngineView keyboard focus so key events reach
+            // the injected JavaScript handler immediately (no click needed).
+            webView.forceActiveFocus();
             console.log("[Symmetria] Keyboard nav injected for:",
                 accountView.profile.storageName);
         } else {
