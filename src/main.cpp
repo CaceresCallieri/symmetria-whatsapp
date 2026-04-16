@@ -8,16 +8,33 @@
 
 static constexpr auto k_logPath = "/tmp/symmetria-debug.log";
 
-void messageToFile(QtMsgType, const QMessageLogContext &, const QString &msg)
+void messageToFile(QtMsgType type, const QMessageLogContext &, const QString &msg)
 {
     static QFile file{QString::fromLatin1(k_logPath)};
-    if (!file.isOpen())
-        file.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text);
-    file.write(msg.toUtf8());
-    file.write("\n");
-    file.flush();
+    static bool openFailed = false;
+    if (!file.isOpen() && !openFailed) {
+        if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text))
+            openFailed = true;
+    }
+
+    const char *prefix = [type]() -> const char * {
+        switch (type) {
+        case QtDebugMsg:    return "[DEBUG] ";
+        case QtInfoMsg:     return "[INFO]  ";
+        case QtWarningMsg:  return "[WARN]  ";
+        case QtCriticalMsg: return "[CRIT]  ";
+        case QtFatalMsg:    return "[FATAL] ";
+        default:            return "[?]     ";
+        }
+    }();
+
+    const QByteArray line = QByteArray(prefix) + msg.toUtf8() + '\n';
+    if (file.isOpen()) {
+        file.write(line);
+        file.flush();
+    }
     // Also keep stderr output for interactive use
-    fprintf(stderr, "%s\n", msg.toLocal8Bit().constData());
+    fprintf(stderr, "%s", line.constData());
 }
 
 int main(int argc, char *argv[])

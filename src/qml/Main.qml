@@ -73,6 +73,12 @@ Window {
             if (view && view.reload) view.reload();
         }
     }
+    // Tab context toggle. In NORMAL mode with the WebView focused, the JS
+    // keydown handler intercepts Tab before it reaches this QML shortcut
+    // (stopPropagation in capture phase). This shortcut fires only when the
+    // WebView does not have focus (e.g. after a sidebar click or dialog).
+    // __symmetriaToggleContext guards against firing in INSERT mode, so
+    // misfires are harmless — it acts as a reliable focus-recovery path.
     Shortcut {
         sequence: "Tab"
         onActivated: {

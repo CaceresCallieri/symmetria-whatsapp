@@ -5,7 +5,7 @@
 
     const MODE = { NORMAL: "NORMAL", INSERT: "INSERT" };
     const CONTEXT = { CHAT_LIST: "CHAT_LIST", CONVERSATION: "CONVERSATION" };
-    let currentMode = MODE.NORMAL;
+    let currentMode = MODE.INSERT; // Start in INSERT so WhatsApp loads normally (enterNormalMode called from init timer)
     let currentContext = CONTEXT.CHAT_LIST;
 
     // WhatsApp Web uses ARIA roles instead of data-testid attributes.
@@ -15,12 +15,16 @@
     const SELECTORS = {
         chatList: "[role='grid']",
         chatItem: "[role='row']",
+        // messageRow intentionally uses the same selector as chatItem; differentiated
+        // by DOM position (getMessageItems filters out rows inside the chat grid).
         messageRow: "[role='row']",
         textbox: "[role='textbox']",
     };
 
     let selectedChatIndex = -1;
     let selectedMessageIndex = -1;
+    let _pendingGg = false;     // true while waiting for second 'g' to complete gg chord
+    let _pendingGgTimer = null; // timeout that cancels the pending chord
 
     // --- Mode Indicator Overlay ---
     const indicator = document.createElement("div");
@@ -67,6 +71,7 @@
         document.body.appendChild(debugOverlay);
     }
 
+    let _lastDebugInfo = "";
     function updateDebugOverlay(extra) {
         if (!debugOverlay) return;
         const grid = document.querySelector(SELECTORS.chatList);
@@ -86,8 +91,12 @@
 
         debugOverlay.textContent = info;
 
-        // Also log to console → /tmp/symmetria-debug.log via QML forwarder
-        console.log("[Symmetria] " + info.replace(/\n/g, " | "));
+        // Only log to console when state has changed — avoids flooding
+        // /tmp/symmetria-debug.log on every keypress and auto-scan tick.
+        if (info !== _lastDebugInfo) {
+            _lastDebugInfo = info;
+            console.log("[Symmetria] " + info.replace(/\n/g, " | "));
+        }
     }
 
     function updateIndicator() {
@@ -229,6 +238,9 @@
         setTimeout(() => {
             const messages = getMessageItems();
             if (messages.length === 0) return;
+            // Guard: if WhatsApp's virtual list removed the scrollable container
+            // during the scroll, skip re-indexing to avoid a zero-rect false result.
+            if (!document.contains(scrollable)) return;
 
             const panelRect = scrollable.getBoundingClientRect();
             const centerY = panelRect.top + panelRect.height / 2;
@@ -269,6 +281,12 @@
             return true;
         }
         return false;
+    }
+
+    function enterSearchMode() {
+        focusSearch();
+        currentMode = MODE.INSERT;
+        updateIndicator();
     }
 
     // --- Mode Switching ---
@@ -339,25 +357,18 @@
             }
 
             case "/": { // Focus search
-                focusSearch();
-                currentMode = MODE.INSERT;
-                updateIndicator();
+                enterSearchMode();
                 break;
             }
 
-            case "g": { // gg = first chat (wait for second g)
-                const ggHandler = function(e2) {
-                    document.removeEventListener("keydown", ggHandler, true);
-                    if (e2.key === "g") {
-                        e2.preventDefault();
-                        e2.stopPropagation();
-                        highlightChat(0);
-                    }
-                };
-                document.addEventListener("keydown", ggHandler, true);
-                setTimeout(() => {
-                    document.removeEventListener("keydown", ggHandler, true);
-                }, 500);
+            case "g": { // gg = first chat
+                // The blanket blocker above calls stopPropagation(), which prevents
+                // a dynamically-registered capture listener from seeing the second 'g'.
+                // Use a module-level flag instead — the main handler checks it before
+                // the blocker runs so the chord always completes correctly.
+                _pendingGg = true;
+                if (_pendingGgTimer) clearTimeout(_pendingGgTimer);
+                _pendingGgTimer = setTimeout(() => { _pendingGg = false; _pendingGgTimer = null; }, 1000);
                 break;
             }
 
@@ -401,27 +412,16 @@
             }
 
             case "/": { // Focus search
-                focusSearch();
-                currentMode = MODE.INSERT;
-                updateIndicator();
+                enterSearchMode();
                 break;
             }
 
             case "g": { // gg = oldest visible message
-                const ggHandler = function(e2) {
-                    document.removeEventListener("keydown", ggHandler, true);
-                    if (e2.key === "g") {
-                        e2.preventDefault();
-                        e2.stopPropagation();
-                        if (messages.length > 0) {
-                            highlightMessage(0);
-                        }
-                    }
-                };
-                document.addEventListener("keydown", ggHandler, true);
-                setTimeout(() => {
-                    document.removeEventListener("keydown", ggHandler, true);
-                }, 500);
+                // See gg handler in handleChatListKey for explanation of why we use
+                // a module-level flag instead of a dynamically-registered listener.
+                _pendingGg = true;
+                if (_pendingGgTimer) clearTimeout(_pendingGgTimer);
+                _pendingGgTimer = setTimeout(() => { _pendingGg = false; _pendingGgTimer = null; }, 1000);
                 break;
             }
 
@@ -471,6 +471,26 @@
 
         // In INSERT mode, let all keys pass through to WhatsApp
         if (currentMode === MODE.INSERT) return;
+
+        // Complete the gg chord BEFORE the blanket blocker below calls
+        // stopPropagation(). Dynamically-registered capture listeners are
+        // skipped once stopPropagation() fires, so we use a module-level flag
+        // checked here — in the handler that was registered first.
+        if (_pendingGg && e.key === "g") {
+            _pendingGg = false;
+            if (_pendingGgTimer) { clearTimeout(_pendingGgTimer); _pendingGgTimer = null; }
+            e.preventDefault();
+            e.stopPropagation();
+            if (currentContext === CONTEXT.CHAT_LIST) {
+                highlightChat(0);
+            } else {
+                const ggMsgs = getMessageItems();
+                if (ggMsgs.length > 0) highlightMessage(0);
+            }
+            return;
+        }
+        // If a non-g key arrives while gg is pending, cancel the chord.
+        if (_pendingGg) { _pendingGg = false; if (_pendingGgTimer) { clearTimeout(_pendingGgTimer); _pendingGgTimer = null; } }
 
         // --- NORMAL MODE: block ALL non-modifier keys from reaching WhatsApp ---
         // Allow Ctrl/Alt/Meta combinations to pass (system shortcuts like Ctrl+C)
