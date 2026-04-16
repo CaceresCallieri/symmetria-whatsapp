@@ -94,7 +94,7 @@
             "grid: " + (grid ? "YES" : "NO") + " | gridRows: " + gridRows + "\n" +
             "totalRows: " + allRows + " | msgRows: " + nonGridRows + "\n" +
             "textboxes: " + textboxes + " | convOpen: " + convOpen + "\n" +
-            "selChatIdx: " + selectedChatIndex + " | selMsgIdx: " + selectedMessageIndex +
+            "selChatIdx: " + selectedChatIndex + " | selMsgIdx: " + selectedMessageIndex + " | selMenuIdx: " + selectedMenuItemIndex +
             (extra ? "\nLast: " + extra : "");
 
         debugOverlay.textContent = info;
@@ -257,7 +257,6 @@
 
     function highlightMenuItem(index) {
         const items = getContextMenuItems();
-        // Clear previous highlights
         items.forEach(item => {
             item.style.backgroundColor = "";
         });
@@ -328,13 +327,10 @@
         // doesn't respond to native keyboard events.
         setTimeout(() => {
             currentContext = CONTEXT.CONTEXT_MENU;
-            selectedMenuItemIndex = 0;
-            const items = getContextMenuItems();
-            if (items.length > 0) {
-                highlightMenuItem(0);
-            }
+            highlightMenuItem(0);
             updateIndicator();
-            if (DEBUG) console.log("[Symmetria] CONTEXT_MENU entered, found", items.length, "menu items");
+            if (DEBUG) console.log("[Symmetria] CONTEXT_MENU entered, found",
+                getContextMenuItems().length, "menu items");
         }, 200);
     }
 
@@ -589,7 +585,7 @@
 
         switch (e.key) {
             case "j":
-            case "ArrowDown": {
+            case "ArrowDown": { // Next menu item
                 if (items.length > 0) {
                     const next = Math.min(selectedMenuItemIndex + 1, items.length - 1);
                     highlightMenuItem(next);
@@ -598,7 +594,7 @@
             }
 
             case "k":
-            case "ArrowUp": {
+            case "ArrowUp": { // Previous menu item
                 if (items.length > 0) {
                     const prev = Math.max(selectedMenuItemIndex - 1, 0);
                     highlightMenuItem(prev);
@@ -606,7 +602,7 @@
                 break;
             }
 
-            case "Enter": {
+            case "Enter": { // Activate selected menu item
                 clickMenuItem();
                 break;
             }
@@ -623,9 +619,8 @@
             // In CONTEXT_MENU, let Escape propagate so WhatsApp closes
             // the dropdown, then return to CONVERSATION context.
             if (currentMode === MODE.NORMAL && currentContext === CONTEXT.CONTEXT_MENU) {
-                // Clear our highlight from menu items before closing
-                const menuItems = getContextMenuItems();
-                menuItems.forEach(item => { item.style.backgroundColor = ""; });
+                const items = getContextMenuItems();
+                items.forEach(item => { item.style.backgroundColor = ""; });
                 selectedMenuItemIndex = -1;
                 currentContext = CONTEXT.CONVERSATION;
                 updateIndicator();
