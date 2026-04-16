@@ -4,7 +4,7 @@
     const DEBUG = true;
 
     const MODE = { NORMAL: "NORMAL", INSERT: "INSERT" };
-    const CONTEXT = { CHAT_LIST: "CHAT_LIST", CONVERSATION: "CONVERSATION" };
+    const CONTEXT = { CHAT_LIST: "CHAT_LIST", CONVERSATION: "CONVERSATION", CONTEXT_MENU: "CONTEXT_MENU" };
     let currentMode = MODE.INSERT; // Start in INSERT so WhatsApp loads normally (enterNormalMode called from init timer)
     let currentContext = CONTEXT.CHAT_LIST;
 
@@ -30,6 +30,7 @@
 
     let selectedChatIndex = -1;
     let selectedMessageIndex = -1;
+    let selectedMenuItemIndex = -1;
     let _pendingGg = false;     // true while waiting for second 'g' to complete gg chord
     let _pendingGgTimer = null; // timeout that cancels the pending chord
 
@@ -108,7 +109,9 @@
 
     function updateIndicator() {
         if (currentMode === MODE.NORMAL) {
-            if (currentContext === CONTEXT.CONVERSATION) {
+            if (currentContext === CONTEXT.CONTEXT_MENU) {
+                indicator.textContent = "NORMAL \u00b7 CTX";
+            } else if (currentContext === CONTEXT.CONVERSATION) {
                 indicator.textContent = "NORMAL \u00b7 MSG";
             } else {
                 indicator.textContent = "NORMAL";
@@ -216,6 +219,71 @@
         selectedMessageIndex = -1;
     }
 
+    // --- Context Menu Navigation ---
+    // WhatsApp renders the context menu as a custom React popup (not a
+    // native <menu>). Items don't respond to keyboard events, so we
+    // query the DOM and navigate them manually with our own highlight.
+    function getContextMenuItems() {
+        // The menu popup uses role="application" with li children, or
+        // plain divs. Probe multiple selectors to find the items.
+        let items = document.querySelectorAll('[role="menuitem"]');
+        if (items.length > 0) return Array.from(items);
+
+        items = document.querySelectorAll('[role="option"]');
+        if (items.length > 0) return Array.from(items);
+
+        // WhatsApp's context menu often uses a ul > li structure inside
+        // a recently-rendered popup. Look for li elements inside any
+        // element with high z-index or absolute/fixed positioning that
+        // appeared after the right-click. As a heuristic, the menu is
+        // usually the last ul on the page with multiple li children.
+        const lists = document.querySelectorAll('ul');
+        for (let i = lists.length - 1; i >= 0; i--) {
+            const lis = lists[i].querySelectorAll(':scope > li');
+            // Context menu typically has 5-10 items (Reply, Copy, etc.)
+            if (lis.length >= 3) {
+                if (DEBUG) console.log("[Symmetria] Menu found via ul>li, items:", lis.length);
+                return Array.from(lis);
+            }
+        }
+
+        if (DEBUG) console.log("[Symmetria] No menu items found. DOM probe:",
+            "menuitem:", document.querySelectorAll('[role="menuitem"]').length,
+            "option:", document.querySelectorAll('[role="option"]').length,
+            "ul:", document.querySelectorAll('ul').length,
+            "li:", document.querySelectorAll('li').length);
+        return [];
+    }
+
+    function highlightMenuItem(index) {
+        const items = getContextMenuItems();
+        // Clear previous highlights
+        items.forEach(item => {
+            item.style.backgroundColor = "";
+        });
+
+        if (index >= 0 && index < items.length) {
+            selectedMenuItemIndex = index;
+            items[index].style.backgroundColor = "rgba(90, 247, 142, 0.15)";
+            items[index].scrollIntoView({ block: "nearest" });
+        }
+    }
+
+    function clickMenuItem() {
+        const items = getContextMenuItems();
+        if (selectedMenuItemIndex >= 0 && selectedMenuItemIndex < items.length) {
+            const item = items[selectedMenuItemIndex];
+            // Clear our highlight before clicking
+            item.style.backgroundColor = "";
+            simulateClick(item);
+            if (DEBUG) console.log("[Symmetria] Clicked menu item", selectedMenuItemIndex,
+                "text:", item.textContent.trim().slice(0, 20));
+        }
+        selectedMenuItemIndex = -1;
+        currentContext = CONTEXT.CONVERSATION;
+        updateIndicator();
+    }
+
     // Open the context menu on the currently highlighted message via
     // right-click (contextmenu event). The click must land on the
     // message BUBBLE, not the empty space in the row. Incoming
@@ -253,6 +321,21 @@
         if (DEBUG) console.log("[Symmetria] Context menu on message", selectedMessageIndex,
             "type:", container ? container.className.slice(0, 15) : "unknown",
             "target:", target.tagName + "." + (typeof target.className === "string" ? target.className : (target.className.baseVal || "")).slice(0, 30));
+
+        // Switch to CONTEXT_MENU after a short delay to let WhatsApp
+        // render the dropdown. Menu items are navigated manually via
+        // handleContextMenuKey since WhatsApp's custom React menu
+        // doesn't respond to native keyboard events.
+        setTimeout(() => {
+            currentContext = CONTEXT.CONTEXT_MENU;
+            selectedMenuItemIndex = 0;
+            const items = getContextMenuItems();
+            if (items.length > 0) {
+                highlightMenuItem(0);
+            }
+            updateIndicator();
+            if (DEBUG) console.log("[Symmetria] CONTEXT_MENU entered, found", items.length, "menu items");
+        }, 200);
     }
 
     function isConversationOpen() {
@@ -501,10 +584,53 @@
         }
     }
 
+    function handleContextMenuKey(e) {
+        const items = getContextMenuItems();
+
+        switch (e.key) {
+            case "j":
+            case "ArrowDown": {
+                if (items.length > 0) {
+                    const next = Math.min(selectedMenuItemIndex + 1, items.length - 1);
+                    highlightMenuItem(next);
+                }
+                break;
+            }
+
+            case "k":
+            case "ArrowUp": {
+                if (items.length > 0) {
+                    const prev = Math.max(selectedMenuItemIndex - 1, 0);
+                    highlightMenuItem(prev);
+                }
+                break;
+            }
+
+            case "Enter": {
+                clickMenuItem();
+                break;
+            }
+
+            default:
+                break;
+        }
+    }
+
     // --- Key Handler ---
     document.addEventListener("keydown", function(e) {
         // Escape works across all modes and contexts
         if (e.key === "Escape") {
+            // In CONTEXT_MENU, let Escape propagate so WhatsApp closes
+            // the dropdown, then return to CONVERSATION context.
+            if (currentMode === MODE.NORMAL && currentContext === CONTEXT.CONTEXT_MENU) {
+                // Clear our highlight from menu items before closing
+                const menuItems = getContextMenuItems();
+                menuItems.forEach(item => { item.style.backgroundColor = ""; });
+                selectedMenuItemIndex = -1;
+                currentContext = CONTEXT.CONVERSATION;
+                updateIndicator();
+                return; // Don't block — WhatsApp needs this to close the menu
+            }
             e.preventDefault();
             e.stopPropagation();
             if (currentMode === MODE.INSERT) {
@@ -565,7 +691,9 @@
         if (DEBUG) updateDebugOverlay("Last key: " + e.key);
 
         // Dispatch to context-specific handler
-        if (currentContext === CONTEXT.CHAT_LIST) {
+        if (currentContext === CONTEXT.CONTEXT_MENU) {
+            handleContextMenuKey(e);
+        } else if (currentContext === CONTEXT.CHAT_LIST) {
             handleChatListKey(e);
         } else if (currentContext === CONTEXT.CONVERSATION) {
             handleConversationKey(e);
