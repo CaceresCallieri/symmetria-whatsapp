@@ -21,6 +21,18 @@
         textbox: "[role='textbox']",
     };
 
+    // Highlight styles — use inset box-shadow to tint the background without
+    // overriding WhatsApp's native backgrounds (hover, active, etc.).
+    // The 1000px spread creates a full-area color overlay at low alpha;
+    // the 3px left shadow acts as a vim cursorline accent bar.
+    // Chat highlight uses border-left (not box-shadow) to avoid top/bottom
+    // green bleed through gaps between adjacent rows. The negative margin
+    // compensates for the border width so the row doesn't shift right.
+    // Message highlight keeps box-shadow for the background tint overlay.
+    const HIGHLIGHT_STYLE = {
+        message: "inset 3px 0 0 #5af78e, inset 0 0 0 1000px rgba(90, 247, 142, 0.10)",
+    };
+
     let selectedChatIndex = -1;
     let selectedMessageIndex = -1;
     let _pendingGg = false;     // true while waiting for second 'g' to complete gg chord
@@ -128,13 +140,13 @@
     function highlightChat(index) {
         const chats = getChatItems();
         chats.forEach(chat => {
-            chat.style.outline = "";
+            chat.style.borderLeft = "";
         });
 
         if (index >= 0 && index < chats.length) {
             selectedChatIndex = index;
             const target = chats[index];
-            target.style.outline = "2px solid #5af78e";
+            target.style.borderLeft = "3px solid #5af78e";
             target.scrollIntoView({ block: "nearest", behavior: "smooth" });
         }
         updateDebugOverlay();
@@ -187,15 +199,13 @@
     function highlightMessage(index) {
         const messages = getMessageItems();
         messages.forEach(msg => {
-            msg.style.outline = "";
-            msg.style.outlineOffset = "";
+            msg.style.boxShadow = "";
         });
 
         if (index >= 0 && index < messages.length) {
             selectedMessageIndex = index;
             const target = messages[index];
-            target.style.outline = "2px solid #5af78e";
-            target.style.outlineOffset = "-2px";
+            target.style.boxShadow = HIGHLIGHT_STYLE.message;
             target.scrollIntoView({ block: "nearest", behavior: "smooth" });
         }
         updateDebugOverlay();
@@ -204,8 +214,7 @@
     function clearMessageHighlight() {
         const messages = getMessageItems();
         messages.forEach(msg => {
-            msg.style.outline = "";
-            msg.style.outlineOffset = "";
+            msg.style.boxShadow = "";
         });
         selectedMessageIndex = -1;
     }
