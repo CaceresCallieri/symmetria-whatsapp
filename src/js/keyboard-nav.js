@@ -216,6 +216,59 @@
         selectedMessageIndex = -1;
     }
 
+    // Open the context menu (down-arrow dropdown) on the currently
+    // highlighted message. Simulates a hover to reveal the arrow
+    // button, then clicks it after WhatsApp renders the element.
+    function openMessageContextMenu() {
+        const messages = getMessageItems();
+        if (selectedMessageIndex < 0 || selectedMessageIndex >= messages.length) return;
+
+        const row = messages[selectedMessageIndex];
+        const rect = row.getBoundingClientRect();
+        const cx = rect.left + rect.width / 2;
+        const cy = rect.top + rect.height / 2;
+
+        // Find the actual visible element at the center of the message
+        // row — dispatching events on the abstract row container doesn't
+        // reach React's handlers. Same approach as openSelectedChat().
+        const hoverTarget = document.elementFromPoint(cx, cy) || row;
+
+        // Simulate hover with PointerEvent — React 17+ delegates hover
+        // detection via pointerenter/pointermove, not mouseenter/mouseover.
+        const pointerOpts = {
+            bubbles: true, cancelable: true, view: window,
+            clientX: cx, clientY: cy,
+            pointerId: 1, pointerType: "mouse",
+        };
+        hoverTarget.dispatchEvent(new PointerEvent("pointerenter", { ...pointerOpts, bubbles: false }));
+        hoverTarget.dispatchEvent(new PointerEvent("pointermove", pointerOpts));
+        hoverTarget.dispatchEvent(new MouseEvent("mouseover", { bubbles: true, cancelable: true, view: window, clientX: cx, clientY: cy }));
+
+        // Wait for WhatsApp to render the arrow button, then click it
+        setTimeout(() => {
+            const arrow = row.querySelector('[data-icon="ic-chevron-down-menu"]');
+            if (arrow) {
+                const clickTarget = arrow.closest('[role="button"]') || arrow.parentElement;
+                simulateClick(clickTarget || arrow);
+                if (DEBUG) console.log("[Symmetria] Context menu opened for message", selectedMessageIndex);
+            } else {
+                if (DEBUG) {
+                    // Dump all data-icon values to help discover selector changes
+                    const icons = row.querySelectorAll('[data-icon]');
+                    const iconNames = Array.from(icons).map(el => el.getAttribute('data-icon'));
+                    const buttons = row.querySelectorAll('[role="button"]');
+                    console.log("[Symmetria] DOM probe msg " + selectedMessageIndex +
+                        " | data-icons: [" + iconNames.join(", ") + "]" +
+                        " | buttons: " + buttons.length);
+                    updateDebugOverlay(
+                        "msg " + selectedMessageIndex +
+                        " icons:[" + iconNames.join(",") + "]" +
+                        " btns:" + buttons.length);
+                }
+            }
+        }, 150);
+    }
+
     function isConversationOpen() {
         // When a conversation is open, there are 2+ textboxes (search + message input).
         // When no chat is open, there's only 1 (search).
@@ -409,6 +462,11 @@
                     const prev = Math.max(selectedMessageIndex - 1, 0);
                     highlightMessage(prev);
                 }
+                break;
+            }
+
+            case "Enter": { // Open context menu on highlighted message
+                openMessageContextMenu();
                 break;
             }
 
