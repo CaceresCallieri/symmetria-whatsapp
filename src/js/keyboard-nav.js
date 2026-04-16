@@ -216,58 +216,41 @@
         selectedMessageIndex = -1;
     }
 
-    // Open the context menu (down-arrow dropdown) on the currently
-    // highlighted message. Simulates a hover to reveal the arrow
-    // button, then clicks it after WhatsApp renders the element.
+    // Open the context menu on the currently highlighted message via
+    // right-click (contextmenu event). The click must land on the
+    // message BUBBLE, not the empty space in the row. Incoming
+    // messages are left-aligned, outgoing are right-aligned — we
+    // offset the click toward the correct side to hit the bubble.
     function openMessageContextMenu() {
         const messages = getMessageItems();
         if (selectedMessageIndex < 0 || selectedMessageIndex >= messages.length) return;
 
         const row = messages[selectedMessageIndex];
-        const rect = row.getBoundingClientRect();
-        const cx = rect.left + rect.width / 2;
-        const cy = rect.top + rect.height / 2;
+        const container = row.querySelector('.message-in, .message-out');
 
-        // Find the actual visible element at the center of the message
-        // row — dispatching events on the abstract row container doesn't
-        // reach React's handlers. Same approach as openSelectedChat().
-        const hoverTarget = document.elementFromPoint(cx, cy) || row;
+        let cx, cy;
+        if (container) {
+            const r = container.getBoundingClientRect();
+            cy = r.top + r.height / 2;
+            // Offset toward the side where the bubble sits. Incoming
+            // messages hug the left edge, outgoing hug the right.
+            cx = container.classList.contains('message-out')
+                ? r.right - 80
+                : r.left + 80;
+        } else {
+            // System messages or unrecognized rows — center fallback
+            const r = row.getBoundingClientRect();
+            cx = r.left + r.width / 2;
+            cy = r.top + r.height / 2;
+        }
 
-        // Simulate hover with PointerEvent — React 17+ delegates hover
-        // detection via pointerenter/pointermove, not mouseenter/mouseover.
-        const pointerOpts = {
-            bubbles: true, cancelable: true, view: window,
-            clientX: cx, clientY: cy,
-            pointerId: 1, pointerType: "mouse",
-        };
-        hoverTarget.dispatchEvent(new PointerEvent("pointerenter", { ...pointerOpts, bubbles: false, cancelable: false }));
-        hoverTarget.dispatchEvent(new PointerEvent("pointermove", pointerOpts));
+        const target = document.elementFromPoint(cx, cy) || container || row;
+        const opts = { bubbles: true, cancelable: true, view: window, clientX: cx, clientY: cy, button: 2 };
+        target.dispatchEvent(new MouseEvent("contextmenu", opts));
 
-        // Wait for WhatsApp to render the arrow button, then click it
-        setTimeout(() => {
-            const arrow = row.querySelector('[data-icon="ic-chevron-down-menu"]');
-            if (arrow) {
-                const clickTarget = arrow.closest('[role="button"]') || arrow.parentElement;
-                simulateClick(clickTarget || arrow);
-                if (DEBUG) console.log("[Symmetria] Context menu opened for message", selectedMessageIndex);
-            } else {
-                // Dump DOM state to help discover selector changes.
-                // Overlay always updates (even DEBUG=false) so the user
-                // gets visible feedback when the arrow isn't found.
-                const icons = row.querySelectorAll('[data-icon]');
-                const iconNames = Array.from(icons).map(el => el.getAttribute('data-icon'));
-                const buttons = row.querySelectorAll('[role="button"]');
-                if (DEBUG) {
-                    console.log("[Symmetria] DOM probe msg " + selectedMessageIndex +
-                        " | data-icons: [" + iconNames.join(", ") + "]" +
-                        " | buttons: " + buttons.length);
-                }
-                updateDebugOverlay(
-                    "msg " + selectedMessageIndex +
-                    " icons:[" + iconNames.join(",") + "]" +
-                    " btns:" + buttons.length);
-            }
-        }, 150);
+        if (DEBUG) console.log("[Symmetria] Context menu on message", selectedMessageIndex,
+            "type:", container ? container.className.slice(0, 15) : "unknown",
+            "target:", target.tagName + "." + (target.className || "").slice(0, 30));
     }
 
     function isConversationOpen() {
