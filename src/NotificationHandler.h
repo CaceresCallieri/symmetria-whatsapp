@@ -38,6 +38,11 @@ public:
         // Subscribe to D-Bus signals for user interactions with notifications.
         // ActionInvoked fires when the user clicks a notification action in swaync.
         // NotificationClosed fires when a notification is dismissed or expires.
+        //
+        // Using new-style function-pointer connections for compile-time type safety.
+        // The D-Bus signal subscriptions below use the string-based SLOT() form because
+        // QDBusConnection::connect() does not support pointer-to-member syntax — it
+        // requires the classic SLOT() macro. These are the only cases where it appears.
         QDBusConnection::sessionBus().connect(
             QString(),
             QStringLiteral("/org/freedesktop/Notifications"),
@@ -64,8 +69,8 @@ public:
 
 signals:
     // Emitted when the user clicks a notification in swaync.
-    // accountName matches the storageName ("personal", "work") so QML can
-    // map it to the correct account index.
+    // accountName is "Personal" or "Work" — matches the display names used in
+    // ProfileSetup and the accounts[] array in Main.qml.
     void notificationClicked(const QString &accountName);
 
 private:
@@ -81,12 +86,17 @@ private:
     void onNotification(QWebEngineNotification *notification,
                         const QString &accountName)
     {
-        // Tag-based replacement: if an existing D-Bus notification matches
-        // (same tag + origin), replace it instead of stacking a duplicate.
-        // WhatsApp uses tags to group messages from the same chat.
+        // Tag-based replacement: if an existing D-Bus notification from the
+        // same account matches (same tag + origin), replace it instead of
+        // stacking a duplicate. The accountName guard prevents a notification
+        // from "Personal" from incorrectly replacing one from "Work" — both
+        // share the same origin (web.whatsapp.com) so matches() alone is
+        // not sufficient to distinguish them.
         uint replacesId = 0;
         for (auto it = m_active.constBegin(); it != m_active.constEnd(); ++it) {
-            if (it->webNotification && it->webNotification->matches(notification)) {
+            if (it->accountName == accountName
+                    && it->webNotification
+                    && it->webNotification->matches(notification)) {
                 replacesId = it.key();
                 break;
             }
@@ -114,11 +124,12 @@ private:
 
         // Embed the contact photo from WhatsApp if available. This shows the
         // sender's profile picture in swaync instead of a generic app icon.
-        QImage icon = notification->icon();
-        if (!icon.isNull()) {
+        // convertedTo() is called directly on the return value to avoid an
+        // extra intermediate QImage copy.
+        QImage img = notification->icon().convertedTo(QImage::Format_RGBA8888);
+        if (!img.isNull()) {
             // The freedesktop image-data hint expects (iiibiiay):
             //   width, height, rowstride, hasAlpha, bitsPerSample, channels, data
-            QImage img = icon.convertedTo(QImage::Format_RGBA8888);
             QDBusArgument imageArg;
             imageArg.beginStructure();
             imageArg << qint32(img.width())
@@ -165,26 +176,35 @@ private:
 
             uint dbusId = reply.value();
 
-            // Clean up the replaced entry.
-            if (replacesId > 0)
-                m_active.remove(replacesId);
-
+            // Check liveness before committing any state changes. If the
+            // notification was GC'd during the async D-Bus round-trip, discard
+            // it entirely — do not remove the replaced entry (it is still valid)
+            // and do not register a new m_active entry for a dead notification.
             if (!safeNotification) {
                 qWarning() << "[Symmetria] Notification GC'd before D-Bus reply";
                 return;
             }
+
+            // Clean up the replaced entry only after confirming the new
+            // notification is still alive. Removing before the liveness check
+            // would orphan the old ID if we bail out on the null-check above.
+            if (replacesId > 0)
+                m_active.remove(replacesId);
 
             m_active[dbusId] = {safeNotification, accountName};
 
             // Tell WhatsApp Web the notification was successfully displayed.
             safeNotification->show();
 
-            // Bidirectional sync: if WhatsApp closes the notification (message
-            // read on another device), dismiss the D-Bus notification too.
+            // Bidirectional sync: if WhatsApp closes the notification (e.g.
+            // message read on another device), dismiss the D-Bus notification.
+            // Remove from m_active first so that the NotificationClosed signal
+            // the daemon sends in response to CloseNotification does not trigger
+            // a redundant second close() call via onNotificationClosed.
             connect(safeNotification.data(), &QWebEngineNotification::closed,
                     this, [this, dbusId]() {
-                closeDBusNotification(dbusId);
                 m_active.remove(dbusId);
+                closeDBusNotification(dbusId);
             });
 
             qInfo() << "[Symmetria] Notification sent:" << dbusId
@@ -206,8 +226,9 @@ private:
     void raiseWindow()
     {
         // Find the application window and bring it to the foreground.
-        // On Wayland/Hyprland, requestActivate() sends xdg_activation_v1
-        // which the compositor uses to focus the window.
+        // On Wayland/Hyprland only requestActivate() has effect — it sends
+        // xdg_activation_v1 which the compositor uses to focus the window.
+        // raise() is a no-op on Wayland but kept for X11 compatibility.
         const auto windows = QGuiApplication::topLevelWindows();
         for (QWindow *w : windows) {
             if (w->isVisible()) {
@@ -232,12 +253,17 @@ private slots:
             if (it->webNotification)
                 it->webNotification->click();
 
+            // emit before erase so the iterator remains valid if a connected
+            // slot re-enters this handler synchronously.
             emit notificationClicked(it->accountName);
-        }
 
-        if (it->webNotification)
-            it->webNotification->close();
-        m_active.erase(it);
+            // Close and remove only for the "default" action. Other action keys
+            // (if added in the future) should be handled explicitly here rather
+            // than falling through to an unconditional close.
+            if (it->webNotification)
+                it->webNotification->close();
+            m_active.erase(it);
+        }
     }
 
     void onNotificationClosed(uint id, uint reason)

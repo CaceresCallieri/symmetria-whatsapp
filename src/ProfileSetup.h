@@ -119,12 +119,45 @@ private:
             QWebEnginePermission::PermissionType::Notifications);
         if (perm.isValid())
             perm.grant();
+        else
+            qWarning() << "[Symmetria] queryPermission returned invalid for"
+                       << storageName
+                       << "— notifications may not work (requires Qt 6.8+)";
 
         // Install early-injection scripts that patch browser APIs before
         // WhatsApp's JS runs. DocumentCreation injection point guarantees
         // these execute before any page scripts.
-        installStorageScript(profile);
-        installNotificationPermissionScript(profile);
+        installScript(profile,
+                      QStringLiteral("symmetria-storage-persist"),
+                      QStringLiteral(
+                          "if (navigator.storage) {"
+                          "  navigator.storage.persist = () => Promise.resolve(true);"
+                          "  navigator.storage.persisted = () => Promise.resolve(true);"
+                          "}"
+                      ));
+
+        // WhatsApp Web checks Notification.permission synchronously on page load.
+        // In Qt WebEngine this returns "default" until an explicit permission
+        // request is granted, so WhatsApp never creates any Notification objects
+        // — it shows a "click the bell icon" dialog instead.
+        //
+        // Override the JS permission getter so WhatsApp sees "granted" and
+        // skips its "enable notifications" dialog. The Chromium-level grant is
+        // handled separately by queryPermission/perm.grant() above and by
+        // onPermissionRequested in AccountView.qml.
+        //
+        // We must NOT replace Notification.requestPermission — if we intercept
+        // it, the Chromium permission is never set and new Notification() calls
+        // are silently dropped even though the JS property says "granted".
+        installScript(profile,
+                      QStringLiteral("symmetria-notification-permission"),
+                      QStringLiteral(
+                          "if (window.Notification) {"
+                          "  Object.defineProperty(Notification, 'permission', {"
+                          "    get: function() { return 'granted'; }"
+                          "  });"
+                          "}"
+                      ));
 
         qInfo() << "[Symmetria] Profile created:" << storageName
                 << "storage:" << profile->persistentStoragePath()
@@ -133,71 +166,31 @@ private:
         return profile;
     }
 
-    static void installStorageScript(QQuickWebEngineProfile *profile)
-    {
-        // QQuickWebEngineScriptCollection is a private Qt type (forward-declared
-        // only in the public header). Access it via the userScripts Q_PROPERTY
-        // as QVariant → QObject*, then dispatch insert() via QMetaObject since
-        // insert() is Q_INVOKABLE on the private type. This is the documented
-        // workaround for accessing private-API collections from C++ code that
-        // cannot include Qt private headers.
-        QVariant v = profile->property("userScripts");
-        QObject *scripts = qvariant_cast<QObject *>(v);
-
-        if (!scripts) {
-            qWarning() << "[Symmetria] Could not get userScripts from profile";
-            return;
-        }
-
-        QWebEngineScript script;
-        script.setName(QStringLiteral("symmetria-storage-persist"));
-        script.setSourceCode(QStringLiteral(
-            "if (navigator.storage) {"
-            "  navigator.storage.persist = () => Promise.resolve(true);"
-            "  navigator.storage.persisted = () => Promise.resolve(true);"
-            "}"
-        ));
-        script.setInjectionPoint(QWebEngineScript::DocumentCreation);
-        script.setWorldId(QWebEngineScript::MainWorld);
-        script.setRunsOnSubFrames(false);
-
-        QMetaObject::invokeMethod(scripts, "insert",
-                                  Q_ARG(QWebEngineScript, script));
-    }
-
-    // WhatsApp Web checks Notification.permission synchronously on page load.
-    // In Qt WebEngine this returns "default" until an explicit permission
-    // request is granted, so WhatsApp never creates any Notification objects
-    // — it shows a "click the bell icon" dialog instead.
+    // Installs a DocumentCreation user script into the given profile's MainWorld.
+    // Both scripts that patch browser APIs (storage persistence and notification
+    // permission) share this boilerplate — only the name and source differ.
     //
-    // Two things must happen:
-    //   1. Override the JS permission getter so WhatsApp sees "granted" and
-    //      skips its "enable notifications" dialog.
-    //   2. Call the REAL requestPermission() to trigger the Chromium-level
-    //      permission grant via onPermissionRequested in AccountView.qml.
-    //
-    // We must NOT replace requestPermission — if we intercept it, the
-    // Chromium permission is never set and new Notification() calls are
-    // silently dropped even though the JS property says "granted".
-    static void installNotificationPermissionScript(QQuickWebEngineProfile *profile)
+    // QQuickWebEngineScriptCollection is a private Qt type (forward-declared
+    // only in the public header). Access it via the userScripts Q_PROPERTY
+    // as QVariant → QObject*, then dispatch insert() via QMetaObject since
+    // insert() is Q_INVOKABLE on the private type. This is the documented
+    // workaround for accessing private-API collections from C++ code that
+    // cannot include Qt private headers.
+    static void installScript(QQuickWebEngineProfile *profile,
+                              const QString &name,
+                              const QString &sourceCode)
     {
         QVariant v = profile->property("userScripts");
         QObject *scripts = qvariant_cast<QObject *>(v);
 
         if (!scripts) {
-            qWarning() << "[Symmetria] Could not get userScripts for notification script";
+            qWarning() << "[Symmetria] Could not get userScripts for script:" << name;
             return;
         }
 
         QWebEngineScript script;
-        script.setName(QStringLiteral("symmetria-notification-permission"));
-        script.setSourceCode(QStringLiteral(
-            "if (window.Notification) {"
-            "  Object.defineProperty(Notification, 'permission', {"
-            "    get: function() { return 'granted'; }"
-            "  });"
-            "}"
-        ));
+        script.setName(name);
+        script.setSourceCode(sourceCode);
         script.setInjectionPoint(QWebEngineScript::DocumentCreation);
         script.setWorldId(QWebEngineScript::MainWorld);
         script.setRunsOnSubFrames(false);
