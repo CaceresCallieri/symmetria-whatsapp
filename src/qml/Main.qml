@@ -128,6 +128,17 @@ Window {
         }
     }
 
+    // Switch to the correct account when the user clicks a notification
+    // in swaync. ProfileSetup relays the signal from NotificationHandler.
+    Connections {
+        target: ProfileSetup
+        function onNotificationClicked(accountName) {
+            let index = root.accounts.findIndex(a => a.name === accountName);
+            if (index >= 0)
+                root.switchAccount(index);
+        }
+    }
+
     Component.onCompleted: {
         console.log("[Symmetria] WhatsApp wrapper initialized");
     }

@@ -6,8 +6,10 @@
 #include <QStandardPaths>
 #include <QtWebEngineQuick/qquickwebengineprofile.h>
 #include <QWebEngineScript>
+#include <QWebEnginePermission>
 #include <QCoreApplication>
 #include "DownloadHandler.h"
+#include "NotificationHandler.h"
 
 // Creates and manages persistent WebEngine profiles from C++.
 //
@@ -44,10 +46,25 @@ public:
         m_downloadHandler = new DownloadHandler(this);
         m_downloadHandler->attachToProfile(m_personalProfile);
         m_downloadHandler->attachToProfile(m_workProfile);
+
+        m_notificationHandler = new NotificationHandler(this);
+        m_notificationHandler->attachToProfile(m_personalProfile,
+                                               QStringLiteral("Personal"));
+        m_notificationHandler->attachToProfile(m_workProfile,
+                                               QStringLiteral("Work"));
+
+        // Relay notification clicks to QML for account switching.
+        connect(m_notificationHandler, &NotificationHandler::notificationClicked,
+                this, &ProfileSetup::notificationClicked);
     }
 
     QQuickWebEngineProfile *personalProfile() const { return m_personalProfile; }
     QQuickWebEngineProfile *workProfile() const { return m_workProfile; }
+
+signals:
+    // Forwarded from NotificationHandler — emitted when the user clicks a
+    // notification in swaync. accountName is "Personal" or "Work".
+    void notificationClicked(const QString &accountName);
 
 private:
     static constexpr auto k_userAgent =
@@ -57,6 +74,7 @@ private:
     QQuickWebEngineProfile *m_personalProfile;
     QQuickWebEngineProfile *m_workProfile;
     DownloadHandler *m_downloadHandler;
+    NotificationHandler *m_notificationHandler;
 
     QQuickWebEngineProfile *createProfile(const QString &storageName)
     {
@@ -92,11 +110,21 @@ private:
         profile->setDownloadPath(
             QStandardPaths::writableLocation(QStandardPaths::DownloadLocation));
 
-        // Install storage persistence override script.
-        // QWebEngineScript with DocumentCreation injection point runs before
-        // WhatsApp's JS, so navigator.storage.persist() returns true and
-        // IndexedDB session keys won't be evicted.
+        // Pre-grant notification permission at the Chromium level so
+        // new Notification() calls from WhatsApp Web are not silently
+        // dropped. This uses Qt 6.8+'s QWebEnginePermission API to set
+        // the permission in Chromium's store before the page loads.
+        auto perm = profile->queryPermission(
+            QUrl(QStringLiteral("https://web.whatsapp.com")),
+            QWebEnginePermission::PermissionType::Notifications);
+        if (perm.isValid())
+            perm.grant();
+
+        // Install early-injection scripts that patch browser APIs before
+        // WhatsApp's JS runs. DocumentCreation injection point guarantees
+        // these execute before any page scripts.
         installStorageScript(profile);
+        installNotificationPermissionScript(profile);
 
         qInfo() << "[Symmetria] Profile created:" << storageName
                 << "storage:" << profile->persistentStoragePath()
@@ -127,6 +155,47 @@ private:
             "if (navigator.storage) {"
             "  navigator.storage.persist = () => Promise.resolve(true);"
             "  navigator.storage.persisted = () => Promise.resolve(true);"
+            "}"
+        ));
+        script.setInjectionPoint(QWebEngineScript::DocumentCreation);
+        script.setWorldId(QWebEngineScript::MainWorld);
+        script.setRunsOnSubFrames(false);
+
+        QMetaObject::invokeMethod(scripts, "insert",
+                                  Q_ARG(QWebEngineScript, script));
+    }
+
+    // WhatsApp Web checks Notification.permission synchronously on page load.
+    // In Qt WebEngine this returns "default" until an explicit permission
+    // request is granted, so WhatsApp never creates any Notification objects
+    // — it shows a "click the bell icon" dialog instead.
+    //
+    // Two things must happen:
+    //   1. Override the JS permission getter so WhatsApp sees "granted" and
+    //      skips its "enable notifications" dialog.
+    //   2. Call the REAL requestPermission() to trigger the Chromium-level
+    //      permission grant via onPermissionRequested in AccountView.qml.
+    //
+    // We must NOT replace requestPermission — if we intercept it, the
+    // Chromium permission is never set and new Notification() calls are
+    // silently dropped even though the JS property says "granted".
+    static void installNotificationPermissionScript(QQuickWebEngineProfile *profile)
+    {
+        QVariant v = profile->property("userScripts");
+        QObject *scripts = qvariant_cast<QObject *>(v);
+
+        if (!scripts) {
+            qWarning() << "[Symmetria] Could not get userScripts for notification script";
+            return;
+        }
+
+        QWebEngineScript script;
+        script.setName(QStringLiteral("symmetria-notification-permission"));
+        script.setSourceCode(QStringLiteral(
+            "if (window.Notification) {"
+            "  Object.defineProperty(Notification, 'permission', {"
+            "    get: function() { return 'granted'; }"
+            "  });"
             "}"
         ));
         script.setInjectionPoint(QWebEngineScript::DocumentCreation);

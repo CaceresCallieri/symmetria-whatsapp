@@ -30,6 +30,7 @@ qt_add_qml_module(${PROJECT_NAME}
     SOURCES
         src/ProfileSetup.h
         src/DownloadHandler.h
+        src/NotificationHandler.h
     QML_FILES
         src/qml/Main.qml
         src/qml/AccountSidebar.qml
