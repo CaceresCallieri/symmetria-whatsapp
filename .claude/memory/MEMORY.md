@@ -1,3 +1,3 @@
 - [Project Overview](project_overview.md) — Symmetria WhatsApp architecture, phases, key references, and tech decisions (Qt6/QML, not QuickShell)
 - [Auto-rebuild](feedback_auto_rebuild.md) — Always run cmake --build after code changes; user only wants to relaunch the binary
-- [Keyboard Nav WIP](project_keyboard_nav_wip.md) — Stashed context-aware vim nav; WhatsApp DOM switched to ARIA roles, selectors need rework
+- [Frontend Pivot](project_frontend_pivot.md) — 2026-06-30: abandoned JS-injection nav; native Qt frontend instead; main=stable, dev=experimental; Phase 2 backend undecided (research-first)

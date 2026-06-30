@@ -1,7 +1,10 @@
 ---
-name: Symmetria WhatsApp Overview
-description: Project goals, architecture decisions, and phased approach for building a Qt6-based WhatsApp wrapper with multi-account and keyboard-first navigation
-type: project
+name: symmetria-whatsapp-overview
+description: "Project goals, architecture decisions, and phased approach for building a Qt6-based WhatsApp wrapper with multi-account and keyboard-first navigation"
+metadata: 
+  node_type: memory
+  type: project
+  originSessionId: e4aa3b17-be28-41ae-b890-35887e88614b
 ---
 
 Symmetria WhatsApp is a Qt6/QML-based WhatsApp desktop wrapper, part of the Symmetria ecosystem (shell, file manager, etc.).
@@ -10,20 +13,21 @@ Symmetria WhatsApp is a Qt6/QML-based WhatsApp desktop wrapper, part of the Symm
 
 **How to apply:**
 
-**Phase 1 (MVP — WebView wrapper):**
+**Phase 1 (Stable wrapper — lives on `main`):**
 - Standalone Qt6/QML app (NOT QuickShell)
 - WebEngineView loading web.whatsapp.com
 - Multi-account via QWebEngineProfile isolation (separate storageName per account)
 - Custom frameless window matching Symmetria design language
-- JavaScript injection for vim-like keyboard navigation (j/k, modal Normal/Insert/Command modes)
 - Notifications via D-Bus (`org.freedesktop.Notifications`) to Symmetria Shell's notification center
 - System tray via StatusNotifierItem
-- Selector registry (JSON config) for maintainable DOM targeting using data-testid attributes
 - Zero ToS ban risk (it's just a browser)
+- NOTE: JS-injection vim navigation + selector registry were REMOVED in the 2026-06-30 pivot — see [[project_frontend_pivot]]. Do not re-add DOM injection for navigation.
 
-**Phase 2 (Custom frontend — future):**
-- Matrix bridge (mautrix-whatsapp) + custom Qt/QML Matrix client preferred over Baileys (ban risk)
+**Phase 2 (Native keyboard-driven Qt frontend — built on `dev`):**
+- Native Qt/QML UI rendering WhatsApp data directly; WhatsApp is just a data/transport backend
+- Backend architecture is UNDER EVALUATION (research-first): embedded webview (hybrid) / whatsapp-web.js / Matrix bridge / Baileys — no approach committed yet
 - Full keyboard-driven interface, complete message/media management without mouse
+- See [[project_frontend_pivot]] for the decision and rationale
 
 **Key references:**
 - ZapZap (PyQt6, multi-account via QWebEngineProfile)

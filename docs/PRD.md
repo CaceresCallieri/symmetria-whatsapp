@@ -4,6 +4,31 @@
 
 A Qt6/QML-based WhatsApp desktop client for Arch Linux that prioritizes keyboard-first navigation and multi-account support, integrated into the Symmetria ecosystem's design language.
 
+## Project Status & Direction (Pivot — 2026-06-30)
+
+The original plan delivered keyboard-first navigation by **injecting JavaScript
+into WhatsApp Web's live DOM** (vim-like modal nav). That approach has been
+**abandoned**: WhatsApp Web dropped the `data-testid` attributes the selector
+registry relied on (migrating to ARIA roles), and the injection had to fight the
+platform at every layer (a QML `Shortcut` bridge just to capture `Tab`, stacked
+`keydown`/`keypress`/`beforeinput` handlers to suppress typing in
+`contentEditable`). Every WhatsApp redesign silently broke it — an unwinnable
+maintenance treadmill as a guest in someone else's React app.
+
+**New direction:** keyboard-first UX moves out of injected JS and into a
+**native, keyboard-driven Qt frontend** that renders WhatsApp data directly and
+treats WhatsApp purely as a data/transport backend (a far more stable contract).
+
+**Branch model:**
+- **`main` = stable.** The clean multi-account WhatsApp Web wrapper (Phase 1),
+  with the JS-injection nav layer removed. Always usable.
+- **`dev` = experimental.** Where the native Qt frontend (Phase 2) is built. It
+  is promoted to `main` only once it is feature-complete enough to be the daily
+  driver.
+
+The Phase 2 backend architecture (how the native UI sources WhatsApp data) is
+**under active evaluation** — see Phase 2 below. No approach is committed yet.
+
 ## Problem Statement
 
 Existing WhatsApp desktop experiences fail on three fronts:
@@ -17,7 +42,11 @@ Power user running Arch Linux + Hyprland with keyboard-driven workflows who uses
 
 ---
 
-## Phase 1 — WebView Wrapper (MVP)
+## Phase 1 — WebView Wrapper (Stable Baseline — shipped on `main`)
+
+This is the clean, usable multi-account wrapper that lives on `main`. The
+JS-injection keyboard navigation that was originally specced here (P0-5) has
+been removed; keyboard-first UX is now a Phase 2 goal (native frontend).
 
 ### Core Requirements
 
@@ -29,8 +58,7 @@ Power user running Arch Linux + Hyprland with keyboard-driven workflows who uses
 | P0-2 | **Account switching UI** | Sidebar or tab bar to switch between accounts. Visual indicator showing which account is active. Unread badge count per account. |
 | P0-3 | **WhatsApp Web rendering** | Load `https://web.whatsapp.com` in `WebEngineView` with full feature parity: messaging, media playback, file upload/download, voice messages, video/audio calls. |
 | P0-4 | **Session persistence** | QR code login persists across app restarts. Each account's session stored independently under `~/.local/share/symmetria-whatsapp/<account-name>/`. |
-| P0-5 | **Keyboard navigation layer** | JavaScript injection providing vim-like modal navigation (Normal/Insert/Command modes) for chat list traversal, message selection, and common actions. |
-| P0-6 | **Wayland/Hyprland compatibility** | Native Wayland rendering via `qt6-wayland`. Proper window class for Hyprland rules. |
+| P0-5 | **Wayland/Hyprland compatibility** | Native Wayland rendering via `qt6-wayland`. Proper window class for Hyprland rules. |
 
 #### P1 — Should Have
 
@@ -39,9 +67,8 @@ Power user running Arch Linux + Hyprland with keyboard-driven workflows who uses
 | P1-1 | **System tray** | StatusNotifierItem integration with per-account unread counts. Minimize-to-tray. |
 | P1-2 | **Native notifications** | Intercept WebEngine notifications and forward via D-Bus (`org.freedesktop.Notifications`) to the Symmetria Shell notification center. Per-account notification grouping. |
 | P1-3 | **Symmetria styling** | Custom frameless window with title bar matching Symmetria design language. Consistent color palette, fonts, and border radius. |
-| P1-4 | **Selector registry** | JSON configuration file mapping logical UI elements to CSS selectors (`data-testid`, `aria-*`). Updatable without rebuilding. |
-| P1-5 | **Zoom controls** | Per-account zoom level with persistence. |
-| P1-6 | **Account management** | Add, remove, rename, and reorder accounts. |
+| P1-4 | **Zoom controls** | Per-account zoom level with persistence. |
+| P1-5 | **Account management** | Add, remove, rename, and reorder accounts. |
 
 #### P2 — Nice to Have
 
@@ -54,42 +81,6 @@ Power user running Arch Linux + Hyprland with keyboard-driven workflows who uses
 | P2-5 | **Start minimized** | CLI flag `--minimized` to start in system tray. |
 | P2-6 | **Auto-launch** | Systemd user unit or XDG autostart entry. |
 
-### Keyboard Navigation Specification
-
-#### Modes
-
-| Mode | Activation | Behavior |
-|------|------------|----------|
-| **Normal** | `Escape` from any mode | Navigate chats and messages without typing |
-| **Insert** | `i` or `Enter` on chat | Focus message input, type naturally |
-| **Command** | `:` in Normal mode | Execute commands (`:search`, `:archive`, `:mute`, etc.) |
-
-#### Normal Mode Bindings
-
-| Key | Action |
-|-----|--------|
-| `j` / `k` | Next / previous chat in list |
-| `Enter` | Open selected chat and enter Insert mode |
-| `Escape` | Return to chat list from conversation |
-| `gg` / `G` | First / last chat |
-| `/` | Focus search input |
-| `Ctrl+D` / `Ctrl+U` | Scroll messages down / up (half page) |
-| `r` | Reply to selected message |
-| `e` | React to selected message |
-| `y` | Copy message text |
-| `gd` | Download attachment from selected message |
-| `Ctrl+1..9` | Switch to account 1..9 |
-| `Tab` | Cycle between accounts |
-
-#### Insert Mode Bindings
-
-| Key | Action |
-|-----|--------|
-| `Escape` | Return to Normal mode |
-| `Enter` | Send message |
-| `Shift+Enter` | New line |
-| `Ctrl+B/I/S` | Bold / italic / strikethrough formatting |
-
 ### Technical Architecture
 
 ```
@@ -97,19 +88,19 @@ symmetria-whatsapp/
 ├── CMakeLists.txt
 ├── src/
 │   ├── main.cpp                 # App entry, WebEngine init
-│   ├── qml/
-│   │   ├── Main.qml             # Root window, account sidebar
-│   │   ├── AccountView.qml      # WebEngineView per account
-│   │   ├── AccountSidebar.qml   # Account list with badges
-│   │   ├── TitleBar.qml         # Custom frameless title bar
-│   │   └── components/          # Reusable QML components
-│   └── js/
-│       └── keyboard-nav.js      # Injected keyboard navigation layer
+│   ├── ProfileSetup.h           # Per-account QWebEngineProfile singletons
+│   ├── NotificationHandler.h    # WebEngine → D-Bus notification forwarding
+│   ├── DownloadHandler.h        # File download interception
+│   └── qml/
+│       ├── Main.qml             # Root window, account sidebar, shortcuts
+│       ├── AccountView.qml      # WebEngineView per account
+│       ├── AccountSidebar.qml   # Account list with badges
+│       └── TitleBar.qml         # Custom frameless title bar
 ├── resources/
-│   ├── selectors.json           # DOM selector registry
-│   └── icons/                   # App and tray icons
+│   └── icons/                   # App icons
 ├── docs/
-│   └── PRD.md
+│   ├── PRD.md
+│   └── feature-ideas/           # Researched-but-unbuilt feature parking lot
 └── CLAUDE.md
 ```
 
@@ -122,32 +113,72 @@ symmetria-whatsapp/
 ### Success Criteria (Phase 1)
 
 1. Two WhatsApp accounts running simultaneously with independent sessions
-2. Switch between accounts in under 500ms
-3. Navigate chat list and open conversations entirely via keyboard
-4. Notifications appear in the Symmetria Shell notification center grouped by account
-5. App uses less RAM than two separate browser tabs (~400MB total for 2 accounts)
-6. Window matches Symmetria design language
+2. Switch between accounts in under 500ms (incl. `Ctrl+1/2`, `Ctrl+Tab`)
+3. Notifications appear in the Symmetria Shell notification center grouped by account
+4. App uses less RAM than two separate browser tabs (~400MB total for 2 accounts)
+5. Window matches Symmetria design language
+
+> Full keyboard-driven chat navigation is intentionally **not** a Phase 1
+> criterion anymore — it moved to Phase 2 (native frontend).
 
 ---
 
-## Phase 2 — Custom Frontend (Future)
+## Phase 2 — Native Keyboard-Driven Frontend (in development on `dev`)
+
+This is the heart of the pivot and the project's real long-term goal.
 
 ### Vision
 
-Replace the WhatsApp Web webview with a fully custom, keyboard-native UI that renders WhatsApp data directly.
+A **native Qt/QML frontend** that renders WhatsApp data directly and is
+keyboard-driven by design — no injected JS, no scraping a foreign UI to fake
+navigation. WhatsApp becomes a *data/transport backend*; the UI is entirely
+ours, so every element is reachable by keyboard because we built it that way.
 
-### Approach Options
+### Architecture — UNDER EVALUATION (research-first, nothing committed)
 
-| Approach | Risk | Maintenance | Recommended |
-|----------|------|-------------|-------------|
-| Matrix bridge (`mautrix-whatsapp`) + custom Qt client | Moderate | Low | **Yes** |
-| Baileys (direct protocol) + custom UI | High (bans) | High | No |
-| whatsapp-web.js + custom overlay | Low-Moderate | Medium | Maybe |
+The pivotal open decision is **how the native UI sources WhatsApp data**. This
+choice sets the ban-risk, dependency, latency, and maintenance profile, so it
+will be settled by a focused research spike before any backend code is written.
+Candidate approaches and their honest trade-offs:
+
+| Approach | Ban risk | Extra runtime | Maintenance | Notes |
+|----------|----------|---------------|-------------|-------|
+| **Hybrid** — native UI + embedded WhatsApp Web as a hidden engine; bridge data in/actions out (QWebChannel / targeted JS) | None (it *is* the official web client) | None (stays all-Qt) | Medium — still reads from WhatsApp's DOM, but reading data is far more stable than faking nav | Preserves the project's #1 principle (zero ban risk) and reuses the existing multi-account profile infra |
+| **whatsapp-web.js / WPPConnect backend** — headless Node drives real WhatsApp Web, exposes a clean RPC/event API over a local socket; Qt is a pure native client | Low | Node.js | Low–Medium — community library absorbs WhatsApp's DOM churn | Cleanest separation; native UI fully under our control |
+| **Matrix bridge (`mautrix-whatsapp`)** + native Qt Matrix client | Low–Moderate (bridge uses `whatsmeow`) | Matrix homeserver + bridge | Low (mature stack) | Heaviest infra to run/maintain for a single-user desktop app; was the previous PRD pick |
+| **Baileys (direct protocol)** + native UI | High (non-official client signature) | Node.js | High | Fastest/lightest at runtime, but ToS-ban exposure makes it a poor fit for a daily-driver account |
+
+**Decision status:** pending research. The research spike must compare these on
+current (2026) ban-risk reality, message-delivery latency, E2E-encryption
+handling, Qt integration effort, and ongoing maintenance burden, then recommend
+one. Until then, the docs describe the direction, not the implementation.
+
+### Target Keyboard Model
+
+The vim-like model originally specced for Phase 1 is preserved here as the
+**design target for the native frontend** (it's now achievable cleanly because
+we own every widget, rather than intercepting a foreign DOM):
+
+**Modes**
+
+| Mode | Activation | Behavior |
+|------|------------|----------|
+| **Normal** | `Escape` from any mode | Navigate chats and messages without typing |
+| **Insert** | `i` or `Enter` on chat | Focus message input, type naturally |
+| **Command** | `:` in Normal mode | Execute commands (`:search`, `:archive`, `:mute`, etc.) |
+
+**Normal mode** — `j`/`k` next/prev chat · `Enter` open chat + Insert ·
+`Escape` back to list · `gg`/`G` first/last · `/` search · `Ctrl+D`/`Ctrl+U`
+half-page scroll · `r` reply · `e` react · `y` copy · `gd` download attachment ·
+`Ctrl+1..9` switch account · `Tab` cycle accounts.
+
+**Insert mode** — `Escape` to Normal · `Enter` send · `Shift+Enter` newline ·
+`Ctrl+B/I/S` bold/italic/strikethrough.
 
 ### Phase 2 Requirements (Draft)
 
 - Full message list rendered in native QML (not webview)
-- Vim-like navigation across all UI elements
+- Keyboard navigation (model above) across all UI elements
 - Inline media preview and playback
 - Message search with fuzzy matching
 - Contact/group management via keyboard
@@ -156,12 +187,17 @@ Replace the WhatsApp Web webview with a fully custom, keyboard-native UI that re
 - Message threading and pinning
 - Read/unread management
 
-### Open Questions
+### Research Agenda / Open Questions
 
-- Is the Matrix bridge approach fast enough for real-time chat?
-- Can we maintain E2E encryption through the bridge?
-- What is the acceptable latency for message delivery?
-- Should Phase 2 be a separate app or an evolution of Phase 1?
+- **Backend choice (blocking):** which of the four approaches above wins on the
+  ban-risk / latency / encryption / effort / maintenance matrix?
+- For the hybrid path: how stable is reading WhatsApp Web state via QWebChannel
+  vs. the old DOM-injection fragility? What's the minimal, change-resilient
+  data surface to read?
+- Can E2E encryption be preserved end-to-end for each candidate?
+- What is the acceptable message-delivery latency, and which approaches meet it?
+- Does Phase 2 stay one app (webview hidden behind native UI) or split into a
+  backend process + native client?
 
 ---
 
@@ -177,7 +213,10 @@ Replace the WhatsApp Web webview with a fully custom, keyboard-native UI that re
 
 | Risk | Impact | Mitigation |
 |------|--------|------------|
-| WhatsApp DOM changes break keyboard nav | Medium | Selector registry pattern; community monitoring |
 | WhatsApp blocks non-standard user agents | Low | Use standard Chromium UA (Qt WebEngine does this by default) |
-| Account ban (Phase 2 only) | High | Use Matrix bridge; develop with secondary number |
+| Phase 2 data bridge breaks when WhatsApp Web changes (hybrid path) | Medium | Read a minimal, stable data surface — not the full DOM; this is the lesson from the abandoned injection approach |
+| Account ban (Phase 2, depends on chosen backend) | High | Prefer a backend that runs the real web client (hybrid / whatsapp-web.js) over raw-protocol (Baileys); develop with a secondary number. Final mitigation set follows the architecture research. |
 | Qt WebEngine Wayland bugs | Low | Qt 6.8+ has resolved most issues; fallback flags available |
+
+> The original "WhatsApp DOM changes break keyboard nav" risk is **retired** —
+> the JS-injection nav that carried it has been removed (see Project Status).
