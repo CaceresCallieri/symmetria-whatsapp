@@ -134,24 +134,50 @@ keyboard-driven by design — no injected JS, no scraping a foreign UI to fake
 navigation. WhatsApp becomes a *data/transport backend*; the UI is entirely
 ours, so every element is reachable by keyboard because we built it that way.
 
-### Architecture — UNDER EVALUATION (research-first, nothing committed)
+### Architecture — DECIDED: HYBRID (2026-06-30 research spike)
 
-The pivotal open decision is **how the native UI sources WhatsApp data**. This
-choice sets the ban-risk, dependency, latency, and maintenance profile, so it
-will be settled by a focused research spike before any backend code is written.
-Candidate approaches and their honest trade-offs:
+A fact-checked research spike (19 sources, 25 claims adversarially verified —
+17 confirmed, 8 refuted) compared the four candidates on ban-risk (weighted
+heaviest), latency, E2E encryption, Qt-integration effort, and maintenance.
+**Winner: HYBRID** — a native Qt/QML UI on top of an embedded real WhatsApp Web
+instance in a `QWebEngineView`, with data read out and actions sent in over a
+**minimal, targeted `QWebChannel` bridge**.
 
-| Approach | Ban risk | Extra runtime | Maintenance | Notes |
-|----------|----------|---------------|-------------|-------|
-| **Hybrid** — native UI + embedded WhatsApp Web as a hidden engine; bridge data in/actions out (QWebChannel / targeted JS) | None (it *is* the official web client) | None (stays all-Qt) | Medium — still reads from WhatsApp's DOM, but reading data is far more stable than faking nav | Preserves the project's #1 principle (zero ban risk) and reuses the existing multi-account profile infra |
-| **whatsapp-web.js / WPPConnect backend** — headless Node drives real WhatsApp Web, exposes a clean RPC/event API over a local socket; Qt is a pure native client | Low | Node.js | Low–Medium — community library absorbs WhatsApp's DOM churn | Cleanest separation; native UI fully under our control |
-| **Matrix bridge (`mautrix-whatsapp`)** + native Qt Matrix client | Low–Moderate (bridge uses `whatsmeow`) | Matrix homeserver + bridge | Low (mature stack) | Heaviest infra to run/maintain for a single-user desktop app; was the previous PRD pick |
-| **Baileys (direct protocol)** + native UI | High (non-official client signature) | Node.js | High | Fastest/lightest at runtime, but ToS-ban exposure makes it a poor fit for a daily-driver account |
+| Approach | Ban risk (heaviest) | Extra runtime | E2E encryption | Maintenance | Verdict |
+|----------|---------------------|---------------|----------------|-------------|---------|
+| **HYBRID** — native UI + embedded WhatsApp Web engine, `QWebChannel` bridge | **Lowest** — runs the genuine official client (Meta itself ships its desktop app as a Chromium WebView of web.whatsapp.com) | None (all-Qt) | Preserved (decrypt in-process) | Bridge stability vs. DOM is the only real risk; surface can stay small | **CHOSEN** |
+| whatsapp-web.js / WPPConnect | Real, maintainer-admitted ("shouldn't be considered totally safe") | Node.js | Local (ok) | **Severe** — scrapes WhatsApp's internal webpack Store; breaks completely on internal changes | No |
+| Matrix bridge (`mautrix-whatsapp` / `whatsmeow`) | `whatsmeow` flagged "account at risk" since May 2025 | Homeserver + bridge + Postgres | **Fails** — "end-to-bridge", not end-to-end | Low (mature) but heaviest infra | No |
+| Baileys (direct protocol) | **Highest, best-documented** — Oct 2025 ban wave hit 3+ yr-old bots, version-agnostic | Node.js | Local (ok) | High | No |
 
-**Decision status:** pending research. The research spike must compare these on
-current (2026) ban-risk reality, message-delivery latency, E2E-encryption
-handling, Qt integration effort, and ongoing maintenance burden, then recommend
-one. Until then, the docs describe the direction, not the implementation.
+**Why HYBRID wins:** lowest ban risk on the heaviest-weighted dimension (it *is*
+the official web client, not a reimplementation), it's the only non-Matrix option
+that cleanly preserves E2E (decryption stays inside the official engine), it adds
+no new runtime, and it **reuses the existing multi-account `QWebEngineProfile`
+infrastructure already on `main`** — Phase 2 builds a native UI on top of the
+Phase 1 wrapper rather than replacing it.
+
+**Cited ban-risk evidence (2025–2026):**
+- Baileys ban wave — https://github.com/WhiskeySockets/Baileys/issues/1869
+- whatsmeow "account at risk" warnings — https://github.com/tulir/whatsmeow/issues/810
+- whatsapp-web.js disablements + maintainer warning — https://github.com/pedroslopez/whatsapp-web.js
+- Qt `QWebChannel` JS↔C++ bridge (mechanism) — https://doc.qt.io/qt-6/qtwebchannel-javascript.html
+
+**Caveats carried forward (verified, not hand-waved):**
+1. **Bridge stability is HYBRID's one real unknown** — it still reads from
+   WhatsApp Web's DOM, so it inherits a DOM-fragility risk. The mitigation (and
+   the lesson from the abandoned injection nav) is a *minimal, targeted* read
+   surface — not whatsapp-web.js's full internal-Store reconstruction. A thin
+   spike validates this before the full frontend is built.
+2. **Latency was never benchmarked** by any source — HYBRID rides the same
+   real-time socket as the official client so it should match it, but that's
+   inference.
+3. **Ban-risk is fast-moving** (enforcement intensified into 2026) — re-check
+   before any long-term commitment. "Lowest" ban risk, **not** guaranteed zero
+   (the "zero ban risk" framing was explicitly refuted in verification).
+4. Running two accounts as two embedded profiles is already the Phase 1 status
+   quo (two officially-supported linked-device web sessions); HYBRID changes the
+   UI layer, not that.
 
 ### Target Keyboard Model
 
@@ -187,17 +213,19 @@ half-page scroll · `r` reply · `e` react · `y` copy · `gd` download attachme
 - Message threading and pinning
 - Read/unread management
 
-### Research Agenda / Open Questions
+### Open Questions (backend choice now RESOLVED — HYBRID)
 
-- **Backend choice (blocking):** which of the four approaches above wins on the
-  ban-risk / latency / encryption / effort / maintenance matrix?
-- For the hybrid path: how stable is reading WhatsApp Web state via QWebChannel
-  vs. the old DOM-injection fragility? What's the minimal, change-resilient
-  data surface to read?
-- Can E2E encryption be preserved end-to-end for each candidate?
-- What is the acceptable message-delivery latency, and which approaches meet it?
-- Does Phase 2 stay one app (webview hidden behind native UI) or split into a
-  backend process + native client?
+- **Bridge stability (the decisive unknown):** how often does a targeted
+  `QWebChannel` read surface break against WhatsApp Web DOM/internal changes, and
+  how small/resilient can it be kept? → being validated by the thin bridge spike
+  on `dev`.
+- What is the minimal data surface to read (chat list, active conversation
+  messages, unread counts) and the minimal action surface to send (select chat,
+  send message)?
+- Measured message-delivery latency of the bridge path (no source benchmarked
+  this — verify empirically once the spike works).
+- Does the embedded WhatsApp Web view stay visible (for fallback) or run hidden
+  behind the native UI in the final design?
 
 ---
 
