@@ -222,11 +222,14 @@ half-page scroll · `r` reply · `e` react · `y` copy · `gd` download attachme
   (`[role="grid"] > [role="row"]`); the old `[role="listitem"]` matches 0. A small
   *ranked selector list* adapted automatically — i.e. a minimal, targeted read
   surface survives the exact DOM migration that broke the removed injection nav.
-- **Action surface (sending) — WIRED, live-confirm pending.** The reverse
-  direction is built: native input → `requestSend()` → `sendRequested` signal →
-  page `doSend()` (focuses compose box, `execCommand("insertText")`, optional
-  send). Handler registration verified on both profiles with no errors; the live
-  insert/send into an open chat is the remaining interactive check.
+- **Action surface (sending) — VALIDATED (live).** The reverse direction works
+  end to end: native input → `requestSend()` → `sendRequested` signal → page
+  `doSend()` (focuses compose box, `execCommand("insertText")`, clicks send).
+  Confirmed live: text reaches WhatsApp's compose box, and messages actually send.
+  Keyboard-first semantics work too: Enter sends, Shift+Enter inserts a newline.
+  Two DOM lessons baked in: the send button must be matched by `data-icon` (the
+  `aria-label` is localized — "Enviar" in Spanish), and the lookup must be
+  deferred one tick (the button only renders after the box becomes non-empty).
 - Still open: long-run breakage frequency of the read/action surfaces; behavior
   across all message types (media, replies, voice); multi-account action routing.
 - What is the minimal data surface to read (chat list, active conversation
