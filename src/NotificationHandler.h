@@ -15,8 +15,10 @@
 #include <QtWebEngineQuick/qquickwebengineprofile.h>
 #include <QWebEngineNotification>
 
-// Forwards WhatsApp Web notifications to the system notification daemon
-// (swaync) via the org.freedesktop.Notifications D-Bus interface.
+// Forwards WhatsApp Web notifications to the active system notification
+// daemon (Symmetria Shell's notification center on this system) via the
+// org.freedesktop.Notifications D-Bus interface. The code itself is daemon-
+// agnostic — it speaks the freedesktop spec, not any specific implementation.
 //
 // Handles the full notification lifecycle:
 //   - Web → system: presentNotification signal → D-Bus Notify call
@@ -36,7 +38,7 @@ public:
         : QObject(parent)
     {
         // Subscribe to D-Bus signals for user interactions with notifications.
-        // ActionInvoked fires when the user clicks a notification action in swaync.
+        // ActionInvoked fires when the user clicks a notification action in the daemon.
         // NotificationClosed fires when a notification is dismissed or expires.
         //
         // Using new-style function-pointer connections for compile-time type safety.
@@ -68,7 +70,7 @@ public:
     }
 
 signals:
-    // Emitted when the user clicks a notification in swaync.
+    // Emitted when the user clicks a notification in the system notification center.
     // accountName is "Personal" or "Work" — matches the display names used in
     // ProfileSetup and the accounts[] array in Main.qml.
     void notificationClicked(const QString &accountName);
@@ -123,7 +125,7 @@ private:
         hints[QStringLiteral("urgency")] = QVariant::fromValue<uchar>(1);
 
         // Embed the contact photo from WhatsApp if available. This shows the
-        // sender's profile picture in swaync instead of a generic app icon.
+        // sender's profile picture in the notification center instead of a generic app icon.
         // convertedTo() is called directly on the return value to avoid an
         // extra intermediate QImage copy.
         QImage img = notification->icon().convertedTo(QImage::Format_RGBA8888);

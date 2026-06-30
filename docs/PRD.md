@@ -37,7 +37,7 @@ Power user running Arch Linux + Hyprland with keyboard-driven workflows who uses
 | ID | Requirement | Details |
 |----|-------------|---------|
 | P1-1 | **System tray** | StatusNotifierItem integration with per-account unread counts. Minimize-to-tray. |
-| P1-2 | **Native notifications** | Intercept WebEngine notifications and forward via D-Bus (`org.freedesktop.Notifications`) to swaync. Per-account notification grouping. |
+| P1-2 | **Native notifications** | Intercept WebEngine notifications and forward via D-Bus (`org.freedesktop.Notifications`) to the Symmetria Shell notification center. Per-account notification grouping. |
 | P1-3 | **Symmetria styling** | Custom frameless window with title bar matching Symmetria design language. Consistent color palette, fonts, and border radius. |
 | P1-4 | **Selector registry** | JSON configuration file mapping logical UI elements to CSS selectors (`data-testid`, `aria-*`). Updatable without rebuilding. |
 | P1-5 | **Zoom controls** | Per-account zoom level with persistence. |
@@ -124,7 +124,7 @@ symmetria-whatsapp/
 1. Two WhatsApp accounts running simultaneously with independent sessions
 2. Switch between accounts in under 500ms
 3. Navigate chat list and open conversations entirely via keyboard
-4. Notifications appear in swaync grouped by account
+4. Notifications appear in the Symmetria Shell notification center grouped by account
 5. App uses less RAM than two separate browser tabs (~400MB total for 2 accounts)
 6. Window matches Symmetria design language
 

@@ -16,7 +16,7 @@ Symmetria WhatsApp is a Qt6/QML-based WhatsApp desktop wrapper, part of the Symm
 - Multi-account via QWebEngineProfile isolation (separate storageName per account)
 - Custom frameless window matching Symmetria design language
 - JavaScript injection for vim-like keyboard navigation (j/k, modal Normal/Insert/Command modes)
-- Notifications via D-Bus to swaync
+- Notifications via D-Bus (`org.freedesktop.Notifications`) to Symmetria Shell's notification center
 - System tray via StatusNotifierItem
 - Selector registry (JSON config) for maintainable DOM targeting using data-testid attributes
 - Zero ToS ban risk (it's just a browser)

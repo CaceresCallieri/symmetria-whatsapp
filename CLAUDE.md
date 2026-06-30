@@ -14,7 +14,7 @@ Qt6/QML WhatsApp wrapper with multi-account support and vim-like keyboard naviga
 - Each account = separate `QWebEngineProfile` (isolated cookies/storage)
 - Keyboard navigation via JS injection into WhatsApp Web DOM
 - Selector registry (`resources/selectors.json`) maps logical elements to CSS selectors
-- Notifications forwarded via D-Bus to swaync
+- Notifications forwarded via D-Bus (`org.freedesktop.Notifications`) to Symmetria Shell's notification center
 
 ## Workflow
 

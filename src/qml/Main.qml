@@ -129,7 +129,8 @@ Window {
     }
 
     // Switch to the correct account when the user clicks a notification
-    // in swaync. ProfileSetup relays the signal from NotificationHandler.
+    // in the system notification center. ProfileSetup relays the signal
+    // from NotificationHandler.
     Connections {
         target: ProfileSetup
         function onNotificationClicked(accountName) {

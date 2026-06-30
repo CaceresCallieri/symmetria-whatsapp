@@ -63,7 +63,7 @@ public:
 
 signals:
     // Forwarded from NotificationHandler — emitted when the user clicks a
-    // notification in swaync. accountName is "Personal" or "Work".
+    // notification in the system notification center. accountName is "Personal" or "Work".
     void notificationClicked(const QString &accountName);
 
 private:
