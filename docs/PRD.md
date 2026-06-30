@@ -215,10 +215,15 @@ half-page scroll · `r` reply · `e` react · `y` copy · `gd` download attachme
 
 ### Open Questions (backend choice now RESOLVED — HYBRID)
 
-- **Bridge stability (the decisive unknown):** how often does a targeted
-  `QWebChannel` read surface break against WhatsApp Web DOM/internal changes, and
-  how small/resilient can it be kept? → being validated by the thin bridge spike
-  on `dev`.
+- **Bridge stability (the decisive unknown) — INITIAL VALIDATION PASSED.** A thin
+  spike on `dev` (`WhatsAppBridge` + `whatsapp-bridge.js`) read the live chat list
+  out of WhatsApp Web through `QWebChannel` into a native QML `ListView` — 70
+  chats, updating live. Key finding: WhatsApp Web's chat list is now an ARIA grid
+  (`[role="grid"] > [role="row"]`); the old `[role="listitem"]` matches 0. A small
+  *ranked selector list* adapted automatically — i.e. a minimal, targeted read
+  surface survives the exact DOM migration that broke the removed injection nav.
+  Still open: long-run breakage frequency, and resilience of the *action* surface
+  (sending), not just reads.
 - What is the minimal data surface to read (chat list, active conversation
   messages, unread counts) and the minimal action surface to send (select chat,
   send message)?
