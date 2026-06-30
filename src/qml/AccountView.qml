@@ -166,30 +166,46 @@ Rectangle {
 
                 Rectangle {
                     width: parent.width
-                    height: 34
+                    height: 56
                     radius: 6
                     color: "#0b141a"
                     border.color: msgInput.activeFocus ? "#25d366" : "#3a4048"
                     border.width: 1
 
-                    TextInput {
+                    TextEdit {
                         id: msgInput
                         anchors.fill: parent
                         anchors.margins: 8
-                        verticalAlignment: TextInput.AlignVCenter
                         color: "white"
                         font.pixelSize: 13
                         clip: true
-                        // Enter inserts only (safe) — the field never auto-sends.
-                        onAccepted: bridge.requestSend(text, false)
+                        wrapMode: TextEdit.Wrap
+                        selectByMouse: true
+
+                        // Keyboard-first send semantics:
+                        //   Enter        → send to the open chat
+                        //   Shift+Enter  → newline (messaging convention)
+                        // Plain Return is consumed (event.accepted) so TextEdit
+                        // doesn't also insert a line break; Shift+Return falls
+                        // through to the default newline insertion.
+                        Keys.onPressed: function(event) {
+                            if ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter)
+                                    && !(event.modifiers & Qt.ShiftModifier)) {
+                                if (msgInput.text.length > 0) {
+                                    bridge.requestSend(msgInput.text, true);
+                                    msgInput.text = "";
+                                }
+                                event.accepted = true;
+                            }
+                        }
 
                         Text {
                             anchors.fill: parent
-                            verticalAlignment: Text.AlignVCenter
                             visible: !msgInput.text && !msgInput.activeFocus
-                            text: "Type to test the bridge…"
+                            text: "Type a message — Enter sends, Shift+Enter = newline"
                             color: "#5a6068"
                             font: msgInput.font
+                            wrapMode: Text.WordWrap
                         }
                     }
                 }
