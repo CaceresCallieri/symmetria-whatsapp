@@ -58,6 +58,33 @@
         return chats;
     }
 
+    // Action-IN (native UI → page): write `text` into WhatsApp Web's compose
+    // box, and send if `autoSend`. execCommand("insertText") is the reliable way
+    // to feed a React-controlled contenteditable — direct textContent edits are
+    // dropped by React. Requires a chat to be open (the footer/compose exists).
+    function doSend(text, autoSend) {
+        var box = document.querySelector('footer [contenteditable="true"]');
+        if (!box) {
+            console.error("[Symmetria] send: no compose box — is a chat open?");
+            return;
+        }
+        box.focus();
+        var ok = document.execCommand("insertText", false, text);
+        console.log("[Symmetria] send: inserted (autoSend=" + autoSend + ", ok=" + ok + ")");
+        if (!autoSend) return;
+
+        // Prefer the explicit send button; fall back to an Enter keypress.
+        var icon = document.querySelector('footer [aria-label="Send"], footer span[data-icon="send"]');
+        if (icon) {
+            (icon.closest("button") || icon).click();
+        } else {
+            box.dispatchEvent(new KeyboardEvent("keydown", {
+                key: "Enter", code: "Enter", keyCode: 13, which: 13, bubbles: true
+            }));
+        }
+        console.log("[Symmetria] send: dispatched send");
+    }
+
     function push() {
         if (!bridge) return;
         try {
@@ -86,6 +113,10 @@
             return;
         }
         console.log("[Symmetria] QWebChannel connected — bridge ready");
+
+        // Action-in: native UI send requests → WhatsApp Web compose box.
+        bridge.sendRequested.connect(doSend);
+        console.log("[Symmetria] bridge: send handler registered");
 
         // Attach the mutation observer once the chat pane exists (it may not at
         // connect time — still loading, or logged out on the QR screen).

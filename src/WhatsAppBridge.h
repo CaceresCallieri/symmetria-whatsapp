@@ -38,6 +38,20 @@ public:
 
     QVariantList chats() const { return m_chats; }
 
+    // Action-OUT direction (QML → C++ → JS): the native UI calls this; it emits
+    // sendRequested, which the page-side bridge script receives over QWebChannel
+    // and performs against WhatsApp Web's compose box. `autoSend == false` only
+    // inserts the text (safe preview); `true` also presses send.
+    Q_INVOKABLE void requestSend(const QString &text, bool autoSend)
+    {
+        const QString trimmed = text.trimmed();
+        if (trimmed.isEmpty())
+            return;
+        qInfo() << "[Symmetria] Bridge: requestSend autoSend=" << autoSend
+                << "len=" << trimmed.size();
+        emit sendRequested(trimmed, autoSend);
+    }
+
 public slots:
     // Invoked from the page's JavaScript over QWebChannel. `chatsJson` is a JSON
     // array of {title, unread} objects scraped from the WhatsApp Web chat list.
@@ -70,6 +84,10 @@ public slots:
 
 signals:
     void chatsChanged();
+
+    // Relayed to the page over QWebChannel; the bridge script connects to this
+    // and writes `text` into the WhatsApp Web compose box (sending if autoSend).
+    void sendRequested(const QString &text, bool autoSend);
 
 private:
     QVariantList m_chats;

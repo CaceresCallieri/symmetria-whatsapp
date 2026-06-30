@@ -127,7 +127,7 @@ Rectangle {
 
             ListView {
                 width: parent.width
-                height: parent.height - 48
+                height: parent.height - 128
                 clip: true
                 model: bridge.chats
                 spacing: 2
@@ -154,6 +154,93 @@ Rectangle {
                             color: "#0b141a"
                             font.pixelSize: 11
                             font.bold: true
+                        }
+                    }
+                }
+            }
+
+            // --- Action-direction spike: native input → bridge → WhatsApp Web ---
+            Column {
+                width: parent.width
+                spacing: 6
+
+                Rectangle {
+                    width: parent.width
+                    height: 34
+                    radius: 6
+                    color: "#0b141a"
+                    border.color: msgInput.activeFocus ? "#25d366" : "#3a4048"
+                    border.width: 1
+
+                    TextInput {
+                        id: msgInput
+                        anchors.fill: parent
+                        anchors.margins: 8
+                        verticalAlignment: TextInput.AlignVCenter
+                        color: "white"
+                        font.pixelSize: 13
+                        clip: true
+                        // Enter inserts only (safe) — the field never auto-sends.
+                        onAccepted: bridge.requestSend(text, false)
+
+                        Text {
+                            anchors.fill: parent
+                            verticalAlignment: Text.AlignVCenter
+                            visible: !msgInput.text && !msgInput.activeFocus
+                            text: "Type to test the bridge…"
+                            color: "#5a6068"
+                            font: msgInput.font
+                        }
+                    }
+                }
+
+                Row {
+                    width: parent.width
+                    spacing: 6
+
+                    // Insert into WhatsApp's compose box WITHOUT sending (safe).
+                    Rectangle {
+                        width: (parent.width - 6) / 2
+                        height: 30
+                        radius: 6
+                        color: insertMA.pressed ? "#1f6f43" : "#2a3942"
+                        opacity: msgInput.text.length > 0 ? 1 : 0.5
+                        Text {
+                            anchors.centerIn: parent
+                            text: "Insert"
+                            color: "white"
+                            font.pixelSize: 12
+                        }
+                        MouseArea {
+                            id: insertMA
+                            anchors.fill: parent
+                            enabled: msgInput.text.length > 0
+                            onClicked: bridge.requestSend(msgInput.text, false)
+                        }
+                    }
+
+                    // Insert AND send to the currently-open chat.
+                    Rectangle {
+                        width: (parent.width - 6) / 2
+                        height: 30
+                        radius: 6
+                        color: sendMA.pressed ? "#1f6f43" : "#25d366"
+                        opacity: msgInput.text.length > 0 ? 1 : 0.5
+                        Text {
+                            anchors.centerIn: parent
+                            text: "Send"
+                            color: "#0b141a"
+                            font.pixelSize: 12
+                            font.bold: true
+                        }
+                        MouseArea {
+                            id: sendMA
+                            anchors.fill: parent
+                            enabled: msgInput.text.length > 0
+                            onClicked: {
+                                bridge.requestSend(msgInput.text, true);
+                                msgInput.text = "";
+                            }
                         }
                     }
                 }
