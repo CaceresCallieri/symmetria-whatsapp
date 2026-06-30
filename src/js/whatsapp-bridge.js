@@ -58,6 +58,17 @@
         return chats;
     }
 
+    // Locate WhatsApp Web's send button. Matched by data-icon (NOT translated)
+    // rather than aria-label (which is localized, e.g. "Enviar" in Spanish).
+    // Covers both the legacy data-icon="send" and the newer "wds-ic-send-*".
+    function findSendButton() {
+        var icon = document.querySelector(
+            'footer [data-icon="send"], footer [data-icon="wds-ic-send-filled"], footer [data-icon*="send"]'
+        );
+        if (!icon) return null;
+        return icon.closest("button") || icon.closest('[role="button"]') || icon;
+    }
+
     // Action-IN (native UI → page): write `text` into WhatsApp Web's compose
     // box, and send if `autoSend`. execCommand("insertText") is the reliable way
     // to feed a React-controlled contenteditable — direct textContent edits are
@@ -73,16 +84,27 @@
         console.log("[Symmetria] send: inserted (autoSend=" + autoSend + ", ok=" + ok + ")");
         if (!autoSend) return;
 
-        // Prefer the explicit send button; fall back to an Enter keypress.
-        var icon = document.querySelector('footer [aria-label="Send"], footer span[data-icon="send"]');
-        if (icon) {
-            (icon.closest("button") || icon).click();
-        } else {
-            box.dispatchEvent(new KeyboardEvent("keydown", {
-                key: "Enter", code: "Enter", keyCode: 13, which: 13, bubbles: true
-            }));
-        }
-        console.log("[Symmetria] send: dispatched send");
+        // The send button only renders on the tick AFTER the box becomes
+        // non-empty, so defer the lookup. A synthetic Enter key is unreliable
+        // (untrusted), so we click the real button instead.
+        setTimeout(function () {
+            var btn = findSendButton();
+            if (btn) {
+                btn.click();
+                console.log("[Symmetria] send: clicked send button");
+                return;
+            }
+            // Still nothing — dump what the footer exposes so we can fix the
+            // selector against the current DOM.
+            var icons = Array.prototype.map.call(
+                document.querySelectorAll("footer [data-icon]"),
+                function (e) { return e.getAttribute("data-icon"); });
+            var labels = Array.prototype.map.call(
+                document.querySelectorAll('footer button[aria-label], footer [role="button"][aria-label]'),
+                function (e) { return e.getAttribute("aria-label"); });
+            console.error("[Symmetria] send: no send button. footer data-icons="
+                + JSON.stringify(icons) + " aria-labels=" + JSON.stringify(labels));
+        }, 150);
     }
 
     function push() {
