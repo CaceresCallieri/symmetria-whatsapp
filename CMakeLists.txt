@@ -37,21 +37,6 @@ qt_add_qml_module(${PROJECT_NAME}
         src/qml/AccountView.qml
 )
 
-# Bundle JS and JSON as resources with clean paths
-qt_add_resources(${PROJECT_NAME} "js"
-    PREFIX "/"
-    BASE "src/js"
-    FILES
-        src/js/keyboard-nav.js
-)
-
-qt_add_resources(${PROJECT_NAME} "selectors"
-    PREFIX "/"
-    BASE "resources"
-    FILES
-        resources/selectors.json
-)
-
 # Bundle app icons as Qt resources under the ":/icons/" prefix.
 # 1024x1024 is intentionally excluded — it bloats the binary (~446 KB) with no
 # benefit at runtime; compositors use the XDG icon theme install below instead.
