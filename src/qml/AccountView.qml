@@ -1,5 +1,7 @@
 import QtQuick
+import QtWebChannel
 import QtWebEngine
+import com.symmetria.whatsapp
 
 Rectangle {
     id: accountView
@@ -16,6 +18,9 @@ Rectangle {
         anchors.fill: parent
         profile: accountView.profile
         url: "https://web.whatsapp.com"
+        // HYBRID bridge: publishes the WhatsAppBridge object into the page so
+        // the injected script can push scraped chat data back to native QML.
+        webChannel: bridgeChannel
 
         onTitleChanged: function(pageTitle) {
             if (!pageTitle) return;
@@ -31,6 +36,8 @@ Rectangle {
                 // Give the view keyboard focus so the user can interact
                 // immediately without a click.
                 webView.forceActiveFocus();
+                // Inject the HYBRID data bridge (qwebchannel.js + extractor).
+                accountView.injectBridge();
             } else if (loadingInfo.status === WebEngineView.LoadFailedStatus) {
                 console.error("[Symmetria] Failed to load WhatsApp Web:",
                     loadingInfo.errorString);
@@ -58,6 +65,13 @@ Rectangle {
             Qt.openUrlExternally(request.requestedUrl);
         }
 
+        // Forward [Symmetria]-tagged console output from the injected bridge
+        // script to stdout so the spike is debuggable from the terminal.
+        onJavaScriptConsoleMessage: function(level, message, lineNumber, sourceID) {
+            if (message.indexOf("[Symmetria]") !== -1)
+                console.log(message);
+        }
+
         settings.javascriptEnabled: true
         settings.localStorageEnabled: true
         // javascriptCanAccessClipboard grants read+write clipboard access; WhatsApp
@@ -68,6 +82,85 @@ Rectangle {
         settings.scrollAnimatorEnabled: false
     }
 
+    // --- HYBRID bridge (PRD Phase 2 spike) ---
+    // The C++ data object, published into the page over QWebChannel as "bridge".
+    WhatsAppBridge {
+        id: bridge
+        WebChannel.id: "bridge"
+    }
+
+    WebChannel {
+        id: bridgeChannel
+        registeredObjects: [bridge]
+    }
+
+    // Native QML panel rendering the chat list read live out of WhatsApp Web
+    // through the bridge. Docked over the (right-hand) conversation area so it
+    // sits beside WhatsApp's own left-hand chat list for easy side-by-side
+    // comparison — visual proof the data-out direction works.
+    Rectangle {
+        id: bridgePanel
+        anchors.right: parent.right
+        anchors.top: parent.top
+        anchors.bottom: parent.bottom
+        anchors.margins: 12
+        width: 280
+        radius: 10
+        color: "#ee101418"
+        border.color: "#3a4048"
+        border.width: 1
+
+        Column {
+            anchors.fill: parent
+            anchors.margins: 12
+            spacing: 8
+
+            Text {
+                width: parent.width
+                text: "Native bridge view (spike)\n" + bridge.chats.length
+                      + " chats via QWebChannel"
+                color: "#9fe6a0"
+                font.pixelSize: 12
+                font.bold: true
+                wrapMode: Text.WordWrap
+            }
+
+            ListView {
+                width: parent.width
+                height: parent.height - 48
+                clip: true
+                model: bridge.chats
+                spacing: 2
+
+                delegate: Row {
+                    width: ListView.view ? ListView.view.width : 0
+                    spacing: 6
+
+                    Text {
+                        width: parent.width - 30
+                        text: modelData.title
+                        color: "white"
+                        font.pixelSize: 13
+                        elide: Text.ElideRight
+                    }
+
+                    Rectangle {
+                        visible: modelData.unread > 0
+                        width: 22; height: 18; radius: 9
+                        color: "#25d366"
+                        Text {
+                            anchors.centerIn: parent
+                            text: modelData.unread
+                            color: "#0b141a"
+                            font.pixelSize: 11
+                            font.bold: true
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     function grabFocus() {
         webView.forceActiveFocus();
     }
@@ -75,5 +168,33 @@ Rectangle {
     function reload() {
         webView.reload();
         console.log("[Symmetria] Reloading profile:", accountView.profile.storageName);
+    }
+
+    // Inject Qt's QWebChannel client library, then our minimal chat-list
+    // extractor, into the embedded WhatsApp Web page. Synchronous XHR from QRC
+    // mirrors the proven loader pattern; sequential runJavaScript calls execute
+    // in page order, so qwebchannel.js is defined before the bridge uses it.
+    function injectBridge() {
+        var libXhr = new XMLHttpRequest();
+        libXhr.open("GET", "qrc:///qwebchannel.js", false);
+        libXhr.send();
+        if (libXhr.status !== 200) {
+            console.error("[Symmetria] Failed to load qwebchannel.js — status:",
+                libXhr.status);
+            return;
+        }
+        webView.runJavaScript(libXhr.responseText);
+
+        var brXhr = new XMLHttpRequest();
+        brXhr.open("GET", "qrc:///whatsapp-bridge.js", false);
+        brXhr.send();
+        if (brXhr.status !== 200) {
+            console.error("[Symmetria] Failed to load whatsapp-bridge.js — status:",
+                brXhr.status);
+            return;
+        }
+        webView.runJavaScript(brXhr.responseText);
+        console.log("[Symmetria] HYBRID bridge injected for:",
+            accountView.profile.storageName);
     }
 }

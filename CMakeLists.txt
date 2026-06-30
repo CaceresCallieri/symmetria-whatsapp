@@ -15,6 +15,8 @@ find_package(Qt6 6.5 REQUIRED COMPONENTS
     Qml
     Quick
     WebEngineQuick
+    WebChannel
+    WebChannelQuick
     DBus
 )
 
@@ -31,10 +33,22 @@ qt_add_qml_module(${PROJECT_NAME}
         src/ProfileSetup.h
         src/DownloadHandler.h
         src/NotificationHandler.h
+        src/WhatsAppBridge.h
     QML_FILES
         src/qml/Main.qml
         src/qml/AccountSidebar.qml
         src/qml/AccountView.qml
+)
+
+# Bundle the HYBRID bridge scripts (PRD Phase 2). qwebchannel.js is Qt's client
+# library; whatsapp-bridge.js is our minimal data-extraction script. Both are
+# injected into the embedded WhatsApp Web page at qrc:///<name>.js.
+qt_add_resources(${PROJECT_NAME} "js"
+    PREFIX "/"
+    BASE "src/js"
+    FILES
+        src/js/qwebchannel.js
+        src/js/whatsapp-bridge.js
 )
 
 # Bundle app icons as Qt resources under the ":/icons/" prefix.
@@ -59,6 +73,8 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     Qt6::Qml
     Qt6::Quick
     Qt6::WebEngineQuick
+    Qt6::WebChannel
+    Qt6::WebChannelQuick
     Qt6::DBus
 )
 
