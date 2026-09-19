@@ -34,3 +34,6 @@ out/
 
 # Built Surfingkeys bundle (6.6 MB of webpack output; rebuild per spike README)
 spike/surfingkeys-electron/surfingkeys-ext/
+
+# Vendored Surfingkeys build (produced by npm run build:extension)
+vendor/

@@ -2,221 +2,232 @@
 
 ## Vision
 
-A Qt6/QML-based WhatsApp desktop client for Arch Linux that prioritizes keyboard-first navigation and multi-account support, integrated into the Symmetria ecosystem's design language.
+A multi-account WhatsApp desktop client for Arch Linux that is driven from the
+keyboard and matches the Symmetria ecosystem's design language.
 
-## Project Status & Direction (Pivot — 2026-06-30)
+## Project status and direction
 
-The original plan delivered keyboard-first navigation by **injecting JavaScript
-into WhatsApp Web's live DOM** (vim-like modal nav). That approach has been
-**abandoned**: WhatsApp Web dropped the `data-testid` attributes the selector
-registry relied on (migrating to ARIA roles), and the injection had to fight the
-platform at every layer (a QML `Shortcut` bridge just to capture `Tab`, stacked
-`keydown`/`keypress`/`beforeinput` handlers to suppress typing in
-`contentEditable`). Every WhatsApp redesign silently broke it — an unwinnable
-maintenance treadmill as a guest in someone else's React app.
+The project has pivoted twice. Both pivots were about the same question — how to
+get vim-style keyboard navigation without an unmaintainable amount of work — and
+the current answer is the first one that does not require the project to build
+and maintain a keyboard layer at all.
 
-**New direction:** keyboard-first UX moves out of injected JS and into a
-**native, keyboard-driven Qt frontend** that renders WhatsApp data directly and
-treats WhatsApp purely as a data/transport backend (a far more stable contract).
+### Pivot 1 (2026-06-30) — away from JS injection
 
-**Branch model:**
-- **`main` = stable.** The clean multi-account WhatsApp Web wrapper (Phase 1),
-  with the JS-injection nav layer removed. Always usable.
-- **`dev` = experimental.** Where the native Qt frontend (Phase 2) is built. It
-  is promoted to `main` only once it is feature-complete enough to be the daily
-  driver.
+Keyboard navigation was originally delivered by injecting JavaScript into
+WhatsApp Web's live DOM. It was abandoned: WhatsApp dropped the `data-testid`
+attributes the selector registry depended on, and intercepting keys inside a
+foreign React application needed stacked hacks. Every WhatsApp redesign broke
+it. The plan became a native Qt frontend that treats WhatsApp as a data backend.
 
-The Phase 2 backend architecture (how the native UI sources WhatsApp data) is
-**under active evaluation** — see Phase 2 below. No approach is committed yet.
+### Pivot 2 (current) — away from a native frontend, to Electron plus Surfingkeys
 
-## Problem Statement
+A native frontend solved the maintenance problem by discarding WhatsApp's own UI
+entirely, but it required choosing a backend to source WhatsApp data from, and
+every candidate carried either ban risk, heavy infrastructure, or a large
+dependency. That decision had blocked the project.
+
+The current direction avoids the question. The app stays a WhatsApp Web wrapper,
+and the keyboard layer is **rented from the Surfingkeys extension** rather than
+built. Surfingkeys hints anything clickable generically -- it has no WhatsApp
+selector registry to rot -- and its authors maintain it.
+
+This is only possible on Electron. **Qt WebEngine exposes no extension API at
+all**, only user scripts, which is the raw-injection route pivot 1 abandoned.
+That single fact is the reason the application was re-platformed from Qt6/QML to
+Electron, and it is the only reason. Everything else about the two stacks was
+close enough not to matter.
+
+The re-platform is validated, not assumed. See `spike/surfingkeys-electron`.
+
+**Branch model:** the Qt implementation remains on `main` as a working fallback
+until the Electron app has been a daily driver.
+
+## Problem statement
 
 Existing WhatsApp desktop experiences fail on three fronts:
-1. **No multi-account support** — The official client and most wrappers support only one account
-2. **Mouse-dependent navigation** — Chat selection, message actions, and file management all require mouse interaction
-3. **No visual integration** — Generic Electron/GTK wrappers don't match custom desktop environments
 
-## Target User
+1. **No multi-account support.** The official client and most wrappers handle
+   one account.
+2. **Mouse-dependent navigation.** Chat selection, message actions and file
+   management all need the mouse.
+3. **No visual integration.** Generic wrappers do not match a custom desktop.
 
-Power user running Arch Linux + Hyprland with keyboard-driven workflows who uses WhatsApp daily across multiple accounts (work + personal).
+## Target user
+
+A power user on Arch Linux and Hyprland with a keyboard-driven workflow, who
+uses WhatsApp daily across a work number and a personal number.
 
 ---
 
-## Phase 1 — WebView Wrapper (Stable Baseline — shipped on `main`)
-
-This is the clean, usable multi-account wrapper that lives on `main`. The
-JS-injection keyboard navigation that was originally specced here (P0-5) has
-been removed; keyboard-first UX is now a Phase 2 goal (native frontend).
-
-### Core Requirements
-
-#### P0 — Must Have
-
-| ID | Requirement | Details |
-|----|-------------|---------|
-| P0-1 | **Multi-account support** | Minimum 2 accounts with fully isolated sessions via `QWebEngineProfile`. Each account has independent cookies, localStorage, and login state. |
-| P0-2 | **Account switching UI** | Sidebar or tab bar to switch between accounts. Visual indicator showing which account is active. Unread badge count per account. |
-| P0-3 | **WhatsApp Web rendering** | Load `https://web.whatsapp.com` in `WebEngineView` with full feature parity: messaging, media playback, file upload/download, voice messages, video/audio calls. |
-| P0-4 | **Session persistence** | QR code login persists across app restarts. Each account's session stored independently under `~/.local/share/symmetria-whatsapp/<account-name>/`. |
-| P0-5 | **Wayland/Hyprland compatibility** | Native Wayland rendering via `qt6-wayland`. Proper window class for Hyprland rules. |
-
-#### P1 — Should Have
-
-| ID | Requirement | Details |
-|----|-------------|---------|
-| P1-1 | **System tray** | StatusNotifierItem integration with per-account unread counts. Minimize-to-tray. |
-| P1-2 | **Native notifications** | Intercept WebEngine notifications and forward via D-Bus (`org.freedesktop.Notifications`) to the Symmetria Shell notification center. Per-account notification grouping. |
-| P1-3 | **Symmetria styling** | Custom frameless window with title bar matching Symmetria design language. Consistent color palette, fonts, and border radius. |
-| P1-4 | **Zoom controls** | Per-account zoom level with persistence. |
-| P1-5 | **Account management** | Add, remove, rename, and reorder accounts. |
-
-#### P2 — Nice to Have
-
-| ID | Requirement | Details |
-|----|-------------|---------|
-| P2-1 | **Custom CSS injection** | Per-account theme customization via user-provided CSS files. |
-| P2-2 | **Download manager** | Intercept file downloads and manage them in a custom UI with configurable save path. |
-| P2-3 | **Do Not Disturb** | Suppress notifications per-account or globally. |
-| P2-4 | **Quick account switcher** | Keyboard shortcut (e.g., `Ctrl+1`/`Ctrl+2`) to jump between accounts. |
-| P2-5 | **Start minimized** | CLI flag `--minimized` to start in system tray. |
-| P2-6 | **Auto-launch** | Systemd user unit or XDG autostart entry. |
-
-### Technical Architecture
+## Architecture
 
 ```
-symmetria-whatsapp/
-├── CMakeLists.txt
-├── src/
-│   ├── main.cpp                 # App entry, WebEngine init
-│   ├── ProfileSetup.h           # Per-account QWebEngineProfile singletons
-│   ├── NotificationHandler.h    # WebEngine → D-Bus notification forwarding
-│   ├── DownloadHandler.h        # File download interception
-│   └── qml/
-│       ├── Main.qml             # Root window, account sidebar, shortcuts
-│       ├── AccountView.qml      # WebEngineView per account
-│       ├── AccountSidebar.qml   # Account list with badges
-│       └── TitleBar.qml         # Custom frameless title bar
-├── resources/
-│   └── icons/                   # App icons
-├── docs/
-│   ├── PRD.md
-│   └── feature-ideas/           # Researched-but-unbuilt feature parking lot
-└── CLAUDE.md
+src/
+├── main/                     Electron main process
+│   ├── index.js              entry, window, IPC, account activation
+│   ├── accounts.js           account list persistence
+│   ├── accountSession.js     per-account session: partition, UA, permissions, downloads
+│   ├── accountViews.js       one WebContentsView per account, show/hide, layout
+│   ├── extensions.js         Surfingkeys loading per session
+│   ├── extensionFrameCsp.js  CSP rewrite so the extension UI frame renders
+│   ├── notifications.js      web notifications to the desktop daemon
+│   ├── shortcuts.js          account-switching keys
+│   └── layout.js             window geometry, shared with the renderer
+├── preload/
+│   ├── shell.js              IPC surface for the app chrome
+│   └── account.js            main-world patches inside WhatsApp Web
+└── renderer/                 the app chrome: title bar and account sidebar
 ```
 
-**Key dependencies:**
-- `qt6-webengine` — Chromium-based web rendering
-- `qt6-declarative` — QML engine
-- `qt6-wayland` — Wayland platform plugin
-- `qt6-svg` — SVG icon support
+The window is a frameless `BrowserWindow`. Its own renderer draws the title bar
+and the account sidebar and never loads remote content, so it stays a trusted
+context. Each account's WhatsApp Web lives in a `WebContentsView` stacked into
+the same window and positioned from `layout.js`.
 
-### Success Criteria (Phase 1)
+### Key decisions
 
-1. Two WhatsApp accounts running simultaneously with independent sessions
-2. Switch between accounts in under 500ms (incl. `Ctrl+1/2`, `Ctrl+Tab`)
-3. Notifications appear in the Symmetria Shell notification center grouped by account
-4. App uses less RAM than two separate browser tabs (~400MB total for 2 accounts)
-5. Window matches Symmetria design language
+- **Electron over Qt6/QML** — for the extension API, and nothing else. See
+  "Pivot 2" above.
+- **Wrapper over protocol reimplementation** — zero ban risk, proven approach.
+  This has survived both pivots and is the project's most durable decision.
+- **Rented keyboard layer over a built one** — a third party absorbs WhatsApp's
+  redesigns. This is the whole point of the current direction.
+- **One session partition per account** — `persist:account-<id>` gives each
+  account isolated cookies, storage and login state. It is the direct
+  equivalent of the `QWebEngineProfile` arrangement, with less ceremony.
+- **All accounts stay loaded** — WhatsApp Web must stay connected to deliver
+  notifications for an account you are not looking at, so switching accounts
+  only re-stacks views and is therefore instant.
+- **Browser-API patches, never markup patches** — `src/preload/account.js`
+  replaces `window.Notification` and `navigator.storage`, which are contracts
+  with the browser. It reads no WhatsApp markup. That distinction is what
+  separates the current approach from the one pivot 1 abandoned.
 
-> Full keyboard-driven chat navigation is intentionally **not** a Phase 1
-> criterion anymore — it moved to Phase 2 (native frontend).
+### Workarounds that the platform forces
 
----
+Each of these is a real constraint, not a preference. They are listed here
+because a future agent will otherwise try to remove them.
 
-## Phase 2 — Native Keyboard-Driven Frontend (in development on `dev`)
+| Workaround | Why it exists | Where |
+|---|---|---|
+| User agent reports plain Chrome | WhatsApp Web serves an "update Google Chrome" wall when it sees the `Electron/<version>` token | `accountSession.js` |
+| `chrome-extension:` added to the page CSP frame directives | Real Chrome exempts extension frames from page CSP; Electron does not, so WhatsApp's CSP refuses the Surfingkeys omnibar frame | `extensionFrameCsp.js` |
+| `navigator.storage.persist` forced to resolve true | Chromium denies persistence without a user-engagement signal a wrapper never collects | `preload/account.js` |
+| `window.Notification` replaced | Chromium would show notifications itself, losing the account name and giving the click nowhere to go | `preload/account.js` |
 
-This is the heart of the pivot and the project's real long-term goal.
+### Known limits of the rented keyboard layer
 
-### Vision
+Electron implements only a subset of the `chrome.*` APIs.
+`electron-chrome-extensions` adds `tabs`, `windows`, `commands`, `action`,
+`storage`, `cookies`, `contextMenus`, `notifications` and `webNavigation`.
+Surfingkeys features backed by `bookmarks`, `history`, `downloads`, `sessions`,
+`topSites`, `tabGroups`, `tts`, `proxy`, `userScripts` or `nativeMessaging` have
+no backing API and do nothing. None of them mean anything in a single-site
+client.
 
-A **native Qt/QML frontend** that renders WhatsApp data directly and is
-keyboard-driven by design — no injected JS, no scraping a foreign UI to fake
-navigation. WhatsApp becomes a *data/transport backend*; the UI is entirely
-ours, so every element is reachable by keyboard because we built it that way.
+Surfingkeys' configuration lives in `chrome.storage.local`, which is per-session
+and therefore per-account. A keybinding changed inside one account does not
+follow to the others.
 
-### Architecture — UNDER EVALUATION (research-first, nothing committed)
+### Dependencies
 
-The pivotal open decision is **how the native UI sources WhatsApp data**. This
-choice sets the ban-risk, dependency, latency, and maintenance profile, so it
-will be settled by a focused research spike before any backend code is written.
-Candidate approaches and their honest trade-offs:
-
-| Approach | Ban risk | Extra runtime | Maintenance | Notes |
-|----------|----------|---------------|-------------|-------|
-| **Hybrid** — native UI + embedded WhatsApp Web as a hidden engine; bridge data in/actions out (QWebChannel / targeted JS) | None (it *is* the official web client) | None (stays all-Qt) | Medium — still reads from WhatsApp's DOM, but reading data is far more stable than faking nav | Preserves the project's #1 principle (zero ban risk) and reuses the existing multi-account profile infra |
-| **whatsapp-web.js / WPPConnect backend** — headless Node drives real WhatsApp Web, exposes a clean RPC/event API over a local socket; Qt is a pure native client | Low | Node.js | Low–Medium — community library absorbs WhatsApp's DOM churn | Cleanest separation; native UI fully under our control |
-| **Matrix bridge (`mautrix-whatsapp`)** + native Qt Matrix client | Low–Moderate (bridge uses `whatsmeow`) | Matrix homeserver + bridge | Low (mature stack) | Heaviest infra to run/maintain for a single-user desktop app; was the previous PRD pick |
-| **Baileys (direct protocol)** + native UI | High (non-official client signature) | Node.js | High | Fastest/lightest at runtime, but ToS-ban exposure makes it a poor fit for a daily-driver account |
-
-**Decision status:** pending research. The research spike must compare these on
-current (2026) ban-risk reality, message-delivery latency, E2E-encryption
-handling, Qt integration effort, and ongoing maintenance burden, then recommend
-one. Until then, the docs describe the direction, not the implementation.
-
-### Target Keyboard Model
-
-The vim-like model originally specced for Phase 1 is preserved here as the
-**design target for the native frontend** (it's now achievable cleanly because
-we own every widget, rather than intercepting a foreign DOM):
-
-**Modes**
-
-| Mode | Activation | Behavior |
-|------|------------|----------|
-| **Normal** | `Escape` from any mode | Navigate chats and messages without typing |
-| **Insert** | `i` or `Enter` on chat | Focus message input, type naturally |
-| **Command** | `:` in Normal mode | Execute commands (`:search`, `:archive`, `:mute`, etc.) |
-
-**Normal mode** — `j`/`k` next/prev chat · `Enter` open chat + Insert ·
-`Escape` back to list · `gg`/`G` first/last · `/` search · `Ctrl+D`/`Ctrl+U`
-half-page scroll · `r` reply · `e` react · `y` copy · `gd` download attachment ·
-`Ctrl+1..9` switch account · `Tab` cycle accounts.
-
-**Insert mode** — `Escape` to Normal · `Enter` send · `Shift+Enter` newline ·
-`Ctrl+B/I/S` bold/italic/strikethrough.
-
-### Phase 2 Requirements (Draft)
-
-- Full message list rendered in native QML (not webview)
-- Keyboard navigation (model above) across all UI elements
-- Inline media preview and playback
-- Message search with fuzzy matching
-- Contact/group management via keyboard
-- File browser for attachments
-- Custom notification actions (reply from notification)
-- Message threading and pinning
-- Read/unread management
-
-### Research Agenda / Open Questions
-
-- **Backend choice (blocking):** which of the four approaches above wins on the
-  ban-risk / latency / encryption / effort / maintenance matrix?
-- For the hybrid path: how stable is reading WhatsApp Web state via QWebChannel
-  vs. the old DOM-injection fragility? What's the minimal, change-resilient
-  data surface to read?
-- Can E2E encryption be preserved end-to-end for each candidate?
-- What is the acceptable message-delivery latency, and which approaches meet it?
-- Does Phase 2 stay one app (webview hidden behind native UI) or split into a
-  backend process + native client?
+- `electron` — Arch package `electron` (verified on 42.9.3 and 43.7.0)
+- `electron-chrome-extensions` — GPL-3.0, matching this repository's licence.
+  Any other licence requires the author's patron licence.
+- Surfingkeys — built from source by `npm run build:extension`, pinned in
+  `scripts/build-surfingkeys.js`
 
 ---
 
-## Non-Goals
+## Requirements
+
+### P0 — must have
+
+| ID | Requirement | Status |
+|----|-------------|--------|
+| P0-1 | Multi-account with fully isolated sessions | Done |
+| P0-2 | Account switching UI with an active indicator and unread badges | Done |
+| P0-3 | WhatsApp Web rendering with full feature parity | Done |
+| P0-4 | Session persistence across restarts | Done |
+| P0-5 | Wayland and Hyprland compatibility | Done — native since Electron 38.2 |
+| P0-6 | Vim-style keyboard navigation inside a conversation | Delivered by Surfingkeys; unverified against a logged-in account |
+
+### P1 — should have
+
+| ID | Requirement | Status |
+|----|-------------|--------|
+| P1-1 | Native notifications forwarded to the Symmetria Shell notification center | Done, default click action only |
+| P1-2 | Symmetria styling: frameless window, custom title bar | Done |
+| P1-3 | Account management: add, remove, rename, reorder | Not started — edit `accounts.json` by hand |
+| P1-4 | Quick account switcher: `Ctrl+1`..`Ctrl+9`, `Ctrl+Tab` | Done |
+| P1-5 | Download handling with a configurable save path | Partly — saves to the XDG download directory, not configurable |
+| P1-6 | System tray with per-account unread counts, minimize to tray | Not started |
+| P1-7 | Per-account zoom with persistence | Not started |
+
+### P2 — nice to have
+
+| ID | Requirement | Status |
+|----|-------------|--------|
+| P2-1 | Inline reply from a notification | Blocked — needs raw D-Bus, see below |
+| P2-2 | Do Not Disturb, per account or global | Not started |
+| P2-3 | Shared Surfingkeys configuration across accounts | Not started |
+| P2-4 | Per-account custom CSS | Not started |
+| P2-5 | Start minimized, and an autostart entry | Not started |
+
+## Success criteria
+
+1. Two accounts run at once with independent sessions.
+2. Switching accounts takes under 500 ms, by click or by `Ctrl+1`/`Ctrl+2`.
+3. Notifications reach the Symmetria Shell notification center, named by
+   account, and clicking one focuses that account.
+4. Chat navigation, message actions and link following are all reachable from
+   the keyboard.
+5. The window matches the Symmetria design language.
+
+---
+
+## Open questions
+
+**The one that matters: does Surfingkeys hold up inside a real conversation?**
+The spike proved hint mode engages on WhatsApp Web, but it could only reach the
+login page. Two behaviours are still unmeasured and both could disappoint:
+
+1. WhatsApp's composer is `contenteditable` and takes focus when a chat opens,
+   which drops Surfingkeys into pass-through. WhatsApp also binds `Escape`, so
+   returning to normal mode may fight the application.
+2. The chat list is a virtualised scroller rather than the page, so `j`/`k` may
+   scroll nothing until the scrollable element is targeted.
+
+If either is bad enough, the fallback is a Surfingkeys configuration shipped
+with the app that remaps around the conflict -- configuration, not code, and
+still not a maintenance treadmill.
+
+**Notification actions.** Electron's `Notification` exposes no actions on Linux,
+so replying from a notification needs `org.freedesktop.Notifications` spoken
+directly over D-Bus, the way the Qt `NotificationHandler` did. The logic
+translates almost unchanged; it needs a Node D-Bus dependency.
+
+---
+
+## Non-goals
 
 - Mobile support
-- Cross-platform (Windows/macOS) — Arch Linux only
+- Windows and macOS — Arch Linux only
 - WhatsApp Business API integration
-- Bot or automation features
-- Replacing WhatsApp's E2E encryption
+- Bots and automation
+- Replacing WhatsApp's end-to-end encryption
+- **Reimplementing the WhatsApp protocol, or sourcing WhatsApp data by any route
+  other than the official web client.** This is what makes the ban risk zero,
+  and it is the decision that has survived every pivot.
 
 ## Risks
 
 | Risk | Impact | Mitigation |
 |------|--------|------------|
-| WhatsApp blocks non-standard user agents | Low | Use standard Chromium UA (Qt WebEngine does this by default) |
-| Phase 2 data bridge breaks when WhatsApp Web changes (hybrid path) | Medium | Read a minimal, stable data surface — not the full DOM; this is the lesson from the abandoned injection approach |
-| Account ban (Phase 2, depends on chosen backend) | High | Prefer a backend that runs the real web client (hybrid / whatsapp-web.js) over raw-protocol (Baileys); develop with a secondary number. Final mitigation set follows the architecture research. |
-| Qt WebEngine Wayland bugs | Low | Qt 6.8+ has resolved most issues; fallback flags available |
-
-> The original "WhatsApp DOM changes break keyboard nav" risk is **retired** —
-> the JS-injection nav that carried it has been removed (see Project Status).
+| Surfingkeys disappoints inside a real conversation | High — it is the reason for the whole re-platform | Measure it against a logged-in account before promoting to `main`; fall back to a shipped Surfingkeys configuration |
+| WhatsApp Web changes its user-agent sniffing | Medium | `scripts/verify-keyboard-layer.js` catches it; the wall is loud, not silent |
+| WhatsApp Web changes its CSP shape | Medium | The rewrite handles a missing `frame-src` by deriving one from `default-src`; the verification script asserts the frame loads |
+| `electron-chrome-extensions` stops being maintained | Medium | GPL-3.0, so it can be forked. It is the only hard dependency of the keyboard layer |
+| Surfingkeys drops Manifest V2 or V3 support Electron lacks | Low | The build is pinned to a known-good ref; raise it deliberately and re-run the spike |
+| Account ban | Very low | The app runs the official web client unmodified |

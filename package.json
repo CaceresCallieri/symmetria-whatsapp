@@ -1,0 +1,16 @@
+{
+  "name": "symmetria-whatsapp",
+  "productName": "Symmetria WhatsApp",
+  "version": "0.2.0",
+  "description": "Multi-account WhatsApp desktop client with vim-style keyboard navigation, for Arch Linux and Wayland",
+  "main": "src/main/index.js",
+  "license": "GPL-3.0",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "build:extension": "node scripts/build-surfingkeys.js"
+  },
+  "dependencies": {
+    "electron-chrome-extensions": "^4.9.0"
+  }
+}

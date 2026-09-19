@@ -1,0 +1,206 @@
+/* Symmetria design language: WhatsApp's dark surfaces, flat, no gradients.
+   --title-bar-height and --sidebar-width are written by shell.js from the
+   values in src/main/layout.js, so the CSS and the WebContentsView bounds
+   cannot drift apart. */
+
+:root {
+  --title-bar-height: 36px;
+  --sidebar-width: 64px;
+
+  --surface-deep: #0b141a;
+  --surface: #111b21;
+  --surface-raised: #202c33;
+  --border: #2a3942;
+  --text: #e9edef;
+  --text-muted: #8696a0;
+  --accent: #25d366;
+  --danger: #f15c6d;
+  --radius: 10px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--surface-deep);
+  color: var(--text);
+  font-family: "Inter", "Segoe UI", system-ui, sans-serif;
+  font-size: 13px;
+  user-select: none;
+}
+
+/* ---------- Title bar ---------- */
+
+#title-bar {
+  position: fixed;
+  inset: 0 0 auto 0;
+  height: var(--title-bar-height);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-left: 14px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  /* Lets the compositor move the window by the bar. The buttons opt back out
+     below, otherwise a click on them starts a drag instead. */
+  -webkit-app-region: drag;
+}
+
+#title-bar-label {
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--text-muted);
+}
+
+#window-controls {
+  display: flex;
+  height: 100%;
+  -webkit-app-region: no-drag;
+}
+
+#window-controls button {
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 100%;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+/* The icons inherit `color`, so the hover rules below restyle them without
+   needing a separate selector per button. */
+#window-controls svg {
+  width: 10px;
+  height: 10px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.2;
+}
+
+#window-controls button:hover {
+  background: var(--surface-raised);
+  color: var(--text);
+}
+
+#window-controls button.close:hover {
+  background: var(--danger);
+  color: #fff;
+}
+
+/* ---------- Account sidebar ---------- */
+
+#sidebar {
+  position: fixed;
+  top: var(--title-bar-height);
+  bottom: 0;
+  left: 0;
+  width: var(--sidebar-width);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 0;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+}
+
+.account-button {
+  position: relative;
+  width: 42px;
+  height: 42px;
+  border: 2px solid transparent;
+  border-radius: var(--radius);
+  background: var(--surface-raised);
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 140ms ease, transform 140ms ease;
+}
+
+.account-button:hover {
+  transform: translateY(-1px);
+}
+
+.account-button[aria-current="true"] {
+  border-color: var(--account-color, var(--accent));
+}
+
+/* The active account also gets a bar on the window edge, so the current
+   account is readable at a glance without comparing border colours. */
+.account-button[aria-current="true"]::before {
+  content: "";
+  position: absolute;
+  /* The button is centred in the sidebar, so this offset is exactly the gap
+     to the window edge: (--sidebar-width - button width) / 2. Any larger and
+     the marker is clipped away by the edge. */
+  left: calc((var(--sidebar-width) - 42px) / -2);
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 22px;
+  border-radius: 0 3px 3px 0;
+  background: var(--account-color, var(--accent));
+}
+
+.account-badge {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: var(--accent);
+  color: #0b141a;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 18px;
+}
+
+.account-badge[hidden] {
+  display: none;
+}
+
+/* ---------- Placeholder and toast ---------- */
+
+#placeholder {
+  position: fixed;
+  top: var(--title-bar-height);
+  left: var(--sidebar-width);
+  right: 0;
+  bottom: 0;
+  display: grid;
+  place-items: center;
+  background: var(--surface-deep);
+  color: var(--text-muted);
+}
+
+#toast {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  max-width: 340px;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-raised);
+  color: var(--text);
+  opacity: 0;
+  transform: translateY(6px);
+  pointer-events: none;
+  transition: opacity 160ms ease, transform 160ms ease;
+}
+
+#toast.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
