@@ -17,70 +17,11 @@
 
 const fs = require('node:fs')
 
+const { connect, listTargets, findWhatsAppPage, wait, evaluateJson } = require('./lib/cdp')
+
 const port = Number(process.argv.find((a) => a.startsWith('--port='))?.split('=')[1] || 9222)
 const screenshotPath = process.argv.find((a) => a.startsWith('--out='))?.split('=')[1] || null
 const hintKey = process.argv.find((a) => a.startsWith('--key='))?.split('=')[1] || 'f'
-
-const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
-
-async function findWhatsAppTarget() {
-  const response = await fetch(`http://127.0.0.1:${port}/json/list`)
-  const targets = await response.json()
-  const target = targets.find(
-    (candidate) => candidate.type === 'page' && candidate.url.startsWith('https://web.whatsapp.com')
-  )
-  if (!target) {
-    throw new Error(
-      `no web.whatsapp.com page on port ${port}. Targets: ` +
-        targets.map((candidate) => `${candidate.type} ${candidate.url}`).join(', ')
-    )
-  }
-  return target
-}
-
-// Minimal CDP client. The protocol is a request/response pairing over one
-// socket keyed by an incrementing id, which is little enough to not be worth a
-// dependency.
-function connect(webSocketDebuggerUrl) {
-  const socket = new WebSocket(webSocketDebuggerUrl)
-  const pending = new Map()
-  let nextId = 1
-
-  socket.addEventListener('message', (event) => {
-    const message = JSON.parse(event.data)
-    const resolver = pending.get(message.id)
-    if (!resolver) return
-    pending.delete(message.id)
-    message.error ? resolver.reject(new Error(message.error.message)) : resolver.resolve(message.result)
-  })
-
-  // Without this, an app that quits mid-run leaves every outstanding request
-  // pending forever: the script hangs with no output and no exit code, which
-  // is the worst possible result for something run after an upgrade.
-  socket.addEventListener('close', () => {
-    for (const [, resolver] of pending) {
-      resolver.reject(new Error('the app closed the DevTools connection mid-run'))
-    }
-    pending.clear()
-  })
-
-  const ready = new Promise((resolve, reject) => {
-    socket.addEventListener('open', resolve, { once: true })
-    socket.addEventListener('error', () => reject(new Error('CDP socket failed')), { once: true })
-  })
-
-  return {
-    ready,
-    close: () => socket.close(),
-    send(method, params = {}) {
-      const id = nextId++
-      return new Promise((resolve, reject) => {
-        pending.set(id, { resolve, reject })
-        socket.send(JSON.stringify({ id, method, params }))
-      })
-    },
-  }
-}
 
 const PROBE = `(() => {
   const hosts = Array.from(document.querySelectorAll('.surfingkeys_hints_host'))
@@ -114,10 +55,7 @@ const PROBE = `(() => {
   })
 })()`
 
-async function evaluate(client) {
-  const result = await client.send('Runtime.evaluate', { expression: PROBE, returnByValue: true })
-  return JSON.parse(result.result.value)
-}
+const evaluate = (client) => evaluateJson(client, PROBE)
 
 async function pressKey(client, key) {
   const base = { key, code: `Key${key.toUpperCase()}`, text: key, windowsVirtualKeyCode: key.toUpperCase().charCodeAt(0) }
@@ -164,14 +102,14 @@ function report(label, passed, detail) {
 // own debugging target once it has a real document, so asking the target list
 // is what distinguishes "rendered" from "blocked".
 async function findLiveExtensionFrames() {
-  const targets = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json()
+  const targets = await listTargets(port)
   return targets
     .filter((candidate) => candidate.type === 'iframe' && candidate.url.startsWith('chrome-extension://'))
     .map((candidate) => candidate.url)
 }
 
 async function main() {
-  const target = await findWhatsAppTarget()
+  const target = await findWhatsAppPage(port)
   const client = connect(target.webSocketDebuggerUrl)
   await client.ready
   await client.send('Runtime.enable')

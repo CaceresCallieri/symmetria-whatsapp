@@ -73,6 +73,7 @@ src/
 │   ├── externalLinks.js      scheme filter for page-supplied URLs
 │   ├── extensionFramePolicy.js  CSP and cross-origin-isolation relaxations for the extension frame
 │   ├── notifications.js      web notifications to the desktop daemon
+│   ├── notificationIcon.js   the page-supplied sender avatar, as a NativeImage
 │   ├── shortcuts.js          account-switching keys
 │   └── layout.js             window geometry, shared with the renderer
 ├── preload/
@@ -83,6 +84,8 @@ src/
 └── renderer/                 the app chrome: title bar and account sidebar
 
 test/                         node --test suite (npm test)
+scripts/                      build and verification harnesses, driven from
+                              outside the app so it carries no test hooks
 ```
 
 The window is a frameless `BrowserWindow`. Its own renderer draws the title bar
@@ -121,6 +124,7 @@ because a future agent will otherwise try to remove them.
 | Cross-origin isolation opt-in written onto extension frame responses | WhatsApp sends `Cross-Origin-Embedder-Policy: require-corp`, which refuses any embedded document that does not opt in. Lifting the CSP alone is not enough. WhatsApp's own isolation is untouched — the page still reports `crossOriginIsolated` and keeps `SharedArrayBuffer` | `extensionFramePolicy.js` |
 | `navigator.storage.persist` forced to resolve true | Chromium denies persistence without a user-engagement signal a wrapper never collects | `preload/account.js` |
 | `window.Notification` replaced | Chromium would show notifications itself, losing the account name and giving the click nowhere to go | `preload/account.js` |
+| The sender avatar is read into a data URL inside the page | WhatsApp passes it as a `blob:` URL, which exists only in that renderer. Sending the URL for the main process to fetch instead would let a page name an address for a privileged process to request | `preload/account.js`, `main/notificationIcon.js` |
 
 ### Known limits of the rented keyboard layer
 
@@ -176,7 +180,8 @@ follow to the others.
 | ID | Requirement | Status |
 |----|-------------|--------|
 | P2-1 | Inline reply from a notification | Blocked — Electron registers only a `default` action on Linux, so this needs raw D-Bus |
-| P2-6 | Sender avatar and media preview in notifications | Next up — Electron's `icon` maps to libnotify's large image slot, so no D-Bus is needed for images |
+| P2-6 | Sender avatar in notifications | Done — verified onto the D-Bus wire by `npm run verify:notifications` |
+| P2-7 | The photo itself previewed in a notification | Unmeasured — needs a logged-in account to see whether WhatsApp puts anything but the avatar in `options.icon`. If it does not, the image would have to come from WhatsApp's own DOM or storage, which is the prohibited route |
 | P2-2 | Do Not Disturb, per account or global | Not started |
 | P2-3 | Shared Surfingkeys configuration across accounts | Not started |
 | P2-4 | Per-account custom CSS | Not started |
@@ -209,6 +214,12 @@ login page. Two behaviours are still unmeasured and both could disappoint:
 If either is bad enough, the fallback is a Surfingkeys configuration shipped
 with the app that remaps around the conflict -- configuration, not code, and
 still not a maintenance treadmill.
+
+**Does WhatsApp offer a media preview at all?** `options.icon` carries the
+sender's avatar and the app now forwards it. Whether a photo message puts the
+photo there instead, or just falls back to the avatar with a "📷 Photo" body,
+has never been observed -- the spike and every verification run since have only
+ever reached the login page. One real message answers it.
 
 **Notification actions.** Electron's `Notification` exposes no actions on Linux,
 so replying from a notification needs `org.freedesktop.Notifications` spoken

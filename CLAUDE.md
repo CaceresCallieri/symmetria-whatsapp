@@ -76,22 +76,28 @@ afterwards:
 npm start -- --remote-debugging-port=9222
 
 # shell 2
-npm run verify:keyboard   # exits non-zero if any check fails
+npm run verify:keyboard        # exits non-zero if any check fails
+npm run verify:notifications   # the notification path, avatar included
 ```
+
+`verify:notifications` reads the evidence off the session bus, so it needs a
+notification daemon running. It fails with that reason rather than a wrong
+answer when there is none.
 
 Stop the app when you are done. The app needs a display: on a headless machine
 run it under `Xvfb` (`xvfb-run -a --server-args='-screen 0 1400x900x24' npm
 start -- --remote-debugging-port=9222`).
 
-`npm test` covers the CSP rewriter, the one pure function whose failure is
-silent. `spike/surfingkeys-electron` is a lower-level harness for when the
+`npm test` covers the pure functions whose failure is silent: the CSP
+rewriter, the channel names the preloads have to inline, and what the main
+process will accept as a notification avatar. `spike/surfingkeys-electron` is a lower-level harness for when the
 question is whether the extension works in Electron at all, rather than whether
 this app wired it up correctly; run it with
 `cd spike/surfingkeys-electron && npm install && electron .`.
 
 ## Workarounds that must not be removed
 
-Five of them, each forced by the platform and documented at its call site.
+Six of them, each forced by the platform and documented at its call site.
 `docs/PRD.md` §"Workarounds that the platform forces" is the canonical list with
 reasons. The one thing worth knowing before you act: **the two frame-policy
 workarounds fail silently.** WhatsApp refuses the Surfingkeys omnibar frame

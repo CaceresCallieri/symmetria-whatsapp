@@ -17,10 +17,15 @@
 // -- are not exposed by Electron on Linux. Reaching them means talking
 // org.freedesktop.Notifications directly over D-Bus, the way the removed Qt
 // NotificationHandler did. That is the upgrade path, not a limit of the design.
+//
+// The sender's avatar does not need any of that. Electron's `icon` reaches
+// libnotify's image slot, so it is an ordinary option -- see
+// src/main/notificationIcon.js for why the page hands it over as a data URL.
 
 const { Notification, ipcMain } = require('electron')
 
 const channels = require('../shared/channels')
+const { notificationIconFrom } = require('./notificationIcon')
 
 // WhatsApp reuses one tag per chat so a new message replaces the previous
 // alert rather than stacking. Electron's main-process Notification has no tag
@@ -92,11 +97,19 @@ function show(accountId, sender, payload, { onActivate, accountNameFor }) {
 
   const accountName = accountNameFor(accountId)
 
+  // The sender's avatar, when the page managed to read one. Electron maps
+  // `icon` to libnotify's image slot, so the daemon shows it as the
+  // notification's picture instead of replacing the application icon.
+  const icon = notificationIconFrom(payload.icon)
+
   const notification = new Notification({
     // The account name has to ride in the title, because the daemon shows one
     // application name for the whole app and cannot tell the accounts apart.
     title: accountName ? `${payload.title} — ${accountName}` : payload.title,
     body: payload.body || '',
+    // Omitted rather than passed as null: Electron treats a present-but-empty
+    // icon as an icon and shows a blank image slot.
+    ...(icon ? { icon } : {}),
     silent: false,
     urgency: 'normal',
   })

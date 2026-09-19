@@ -76,6 +76,54 @@ const MAIN_WORLD_PATCHES = `(() => {
   const liveNotifications = new Map()
   let nextNotificationId = 1
 
+  // WhatsApp reuses one tag per chat so that a new message replaces the
+  // previous alert. Reading an avatar is asynchronous, so two messages for the
+  // same chat can finish out of order; this records which notification is the
+  // newest for a tag, and an older one that finishes late is dropped rather
+  // than allowed to replace it.
+  const latestNotificationIdByTag = new Map()
+
+  // The avatar WhatsApp passes as options.icon is a blob: URL, which exists
+  // only inside this renderer -- the main process cannot read one. It is
+  // therefore fetched here and handed over as inert bytes in a data URL.
+  //
+  // Fetching in the page is also the safer arrangement. The alternative is to
+  // send the URL and let the main process fetch it, which would let a page
+  // name any address for a privileged process to request.
+  //
+  // Both globals are captured now, at document start, because WhatsApp
+  // replaces window.fetch with an instrumented version later in its boot.
+  const pageFetch = window.fetch.bind(window)
+  const PageFileReader = window.FileReader
+
+  const ICON_TIMEOUT_MILLISECONDS = 2000
+  const MAX_ICON_BYTES = 512 * 1024
+
+  const readIcon = async (source) => {
+    if (source.startsWith('data:image/')) return source
+
+    const response = await pageFetch(source)
+    const blob = await response.blob()
+    if (!blob.type.startsWith('image/')) return null
+    if (blob.size > MAX_ICON_BYTES) return null
+
+    return await new Promise((resolve, reject) => {
+      const reader = new PageFileReader()
+      reader.onload = () => resolve(reader.result)
+      reader.onerror = () => reject(reader.error)
+      reader.readAsDataURL(blob)
+    })
+  }
+
+  // Never rejects and never hangs. WhatsApp revokes its blob URLs on its own
+  // schedule, so a failed read is ordinary: it must cost the notification its
+  // picture, never the notification itself.
+  const readIconOrNothing = (source) =>
+    Promise.race([
+      readIcon(source).catch(() => null),
+      new Promise((resolve) => setTimeout(resolve, ICON_TIMEOUT_MILLISECONDS, null)),
+    ])
+
   class SymmetriaNotification extends EventTarget {
     constructor(title, options = {}) {
       super()
@@ -91,18 +139,43 @@ const MAIN_WORLD_PATCHES = `(() => {
 
       this._id = nextNotificationId++
       liveNotifications.set(this._id, this)
+      if (this.tag) latestNotificationIdByTag.set(this.tag, this._id)
+
+      // Without an avatar there is nothing to wait for, so the notification
+      // goes out in this turn. The common path must not become asynchronous
+      // just because the uncommon one is.
+      if (this.icon) {
+        readIconOrNothing(this.icon).then((icon) => this._sendToMainProcess(icon))
+      } else {
+        this._sendToMainProcess(null)
+      }
+    }
+
+    _sendToMainProcess(icon) {
+      // Neither guard can fire on the synchronous path. They exist for the
+      // avatar read: close() may have run while it was in flight, or a newer
+      // message for the same chat may already have superseded this one.
+      if (!liveNotifications.has(this._id)) return
+      if (this.tag && latestNotificationIdByTag.get(this.tag) !== this._id) return
 
       bridge.notify({
         notificationId: this._id,
-        title,
+        title: this.title,
         body: this.body,
         tag: this.tag,
+        icon: icon || '',
       })
     }
 
     close() {
       if (!liveNotifications.has(this._id)) return
       liveNotifications.delete(this._id)
+      // Only when this is still the newest for the chat. Clearing it
+      // unconditionally would let an already-superseded notification, closed
+      // late, hand the tag back to nobody and let a stale read through.
+      if (this.tag && latestNotificationIdByTag.get(this.tag) === this._id) {
+        latestNotificationIdByTag.delete(this.tag)
+      }
       bridge.closeNotification(this._id)
       const event = new Event('close')
       this.dispatchEvent(event)

@@ -10,6 +10,7 @@
     "start": "electron .",
     "test": "node --test",
     "verify:keyboard": "node scripts/verify-keyboard-layer.js",
+    "verify:notifications": "node scripts/verify-notification-avatar.js",
     "build:extension": "node scripts/build-surfingkeys.js"
   },
   "dependencies": {
