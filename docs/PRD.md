@@ -70,6 +70,7 @@ src/
 │   ├── accountSession.js     per-account session: partition, UA, permissions, downloads
 │   ├── accountViews.js       one WebContentsView per account, show/hide, layout
 │   ├── extensions.js         Surfingkeys loading per session
+│   ├── externalLinks.js      scheme filter for page-supplied URLs
 │   ├── extensionFramePolicy.js  CSP and cross-origin-isolation relaxations for the extension frame
 │   ├── notifications.js      web notifications to the desktop daemon
 │   ├── shortcuts.js          account-switching keys
@@ -77,7 +78,11 @@ src/
 ├── preload/
 │   ├── shell.js              IPC surface for the app chrome
 │   └── account.js            main-world patches inside WhatsApp Web
+├── shared/
+│   └── channels.js           IPC channel names, used by main and both preloads
 └── renderer/                 the app chrome: title bar and account sidebar
+
+test/                         node --test suite (npm test)
 ```
 
 The window is a frameless `BrowserWindow`. Its own renderer draws the title bar
@@ -162,7 +167,7 @@ follow to the others.
 | P1-2 | Symmetria styling: frameless window, custom title bar | Done |
 | P1-3 | Account management: add, remove, rename, reorder | Not started — edit `accounts.json` by hand |
 | P1-4 | Quick account switcher: `Ctrl+1`..`Ctrl+9`, `Ctrl+Tab` | Done |
-| P1-5 | Download handling with a configurable save path | Partly — saves to the XDG download directory, not configurable |
+| P1-5 | Download handling with a configurable save path | Partly — saves to the XDG download directory with collision-safe names, not configurable |
 | P1-6 | System tray with per-account unread counts, minimize to tray | Not started |
 | P1-7 | Per-account zoom with persistence | Not started |
 
@@ -170,7 +175,8 @@ follow to the others.
 
 | ID | Requirement | Status |
 |----|-------------|--------|
-| P2-1 | Inline reply from a notification | Blocked — needs raw D-Bus, see below |
+| P2-1 | Inline reply from a notification | Blocked — Electron registers only a `default` action on Linux, so this needs raw D-Bus |
+| P2-6 | Sender avatar and media preview in notifications | Next up — Electron's `icon` maps to libnotify's large image slot, so no D-Bus is needed for images |
 | P2-2 | Do Not Disturb, per account or global | Not started |
 | P2-3 | Shared Surfingkeys configuration across accounts | Not started |
 | P2-4 | Per-account custom CSS | Not started |

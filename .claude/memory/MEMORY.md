@@ -1,3 +1,3 @@
-- [Project Overview](project_overview.md) — Electron multi-account WhatsApp wrapper, rented Surfingkeys keyboard layer, architecture and the open risk
+- [Project Overview](project_overview.md) — Electron multi-account WhatsApp wrapper, rented Surfingkeys keyboard layer, and the one constraint to hold before acting
 - [Frontend Pivots](project_frontend_pivot.md) — two pivots on keyboard navigation; why Electron, and what must never be re-attempted
-- [Relaunch, don't build](feedback_auto_rebuild.md) — no build step for app code; verify the keyboard layer after platform changes
+- [Relaunch, do not build](feedback_auto_rebuild.md) — no build step for app code; verify the keyboard layer after platform changes

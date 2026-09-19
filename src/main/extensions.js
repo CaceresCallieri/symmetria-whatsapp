@@ -47,7 +47,9 @@ function attachExtensions(accountSession, { onCreateTab } = {}) {
 
     // Surfingkeys asks for a new tab on commands this app does not offer
     // (`t`, `on`). Hand the URL to the default browser instead of silently
-    // dropping it, so a link opened by hint mode still goes somewhere.
+    // dropping it, so a link opened by hint mode still goes somewhere. The URL
+    // came from WhatsApp's markup via hint mode, so the caller filters its
+    // scheme before it reaches the desktop's URL dispatcher.
     createTab: async (details) => {
       if (onCreateTab && details.url) onCreateTab(details.url)
       throw new Error('symmetria-whatsapp is single-tab')
@@ -80,4 +82,4 @@ async function loadSurfingkeys(accountSession) {
   }
 }
 
-module.exports = { attachExtensions, loadSurfingkeys, isExtensionBuilt, EXTENSION_PATH }
+module.exports = { attachExtensions, loadSurfingkeys, isExtensionBuilt }

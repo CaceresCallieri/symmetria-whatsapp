@@ -1,16 +1,6 @@
-# Build
-build/
-cmake-build-*/
-*.o
-*.a
-*.so
-
-# Qt
-*.pro.user
-*.qmlc
-*.jsc
-moc_*
-qrc_*
+# Note: the Qt/CMake ignore rules were removed with the Qt sources on this
+# branch. `main` still holds that implementation, so keep them there and
+# resolve in favour of this file's rules when the branches merge.
 
 # IDE
 .idea/
@@ -18,7 +8,6 @@ qrc_*
 *.swp
 *.swo
 *~
-compile_commands.json
 
 # OS
 .DS_Store

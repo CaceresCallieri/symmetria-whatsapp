@@ -7,6 +7,11 @@
 // the notification body, and a click that both focuses the window and switches
 // to the account the message belongs to.
 //
+// A click is then handed back to the page. That round trip matters: WhatsApp's
+// own click handler is what opens the chat the message came from, so without
+// it a click would focus the right account and leave you on whatever chat
+// happened to be open -- a regression against what Chromium does natively.
+//
 // Electron's Notification speaks to the daemon over libnotify, which covers the
 // default click action. Extra actions -- an inline reply from the notification
 // -- are not exposed by Electron on Linux. Reaching them means talking
@@ -15,36 +20,75 @@
 
 const { Notification, ipcMain } = require('electron')
 
-const NOTIFY_CHANNEL = 'symmetria:notify'
-const UNREAD_CHANNEL = 'symmetria:unread'
+const channels = require('../shared/channels')
 
 // WhatsApp reuses one tag per chat so a new message replaces the previous
-// alert rather than stacking. Electron has no tag support, so the live
-// notification for a tag is tracked here and closed before its replacement.
+// alert rather than stacking. Electron's main-process Notification has no tag
+// support, so the live notification for a tag is tracked here and closed
+// before its replacement.
 const liveNotificationsByTag = new Map()
+
+// The page closes a notification by the id it minted, not by the chat tag, so
+// a second index maps that id back to the tag key holding the live instance.
+const tagKeyByNotificationId = new Map()
 
 /**
  * @param {object} deps
  * @param {(accountId: string) => void} deps.onActivate  focus window, show account
+ * @param {(webContents: Electron.WebContents) => string|null} deps.accountIdFor
  * @param {(accountId: string) => string} deps.accountNameFor
  * @param {(accountId: string, unreadCount: number) => void} deps.onUnreadChange
  */
-function registerNotificationBridge({ onActivate, accountNameFor, onUnreadChange }) {
-  ipcMain.on(NOTIFY_CHANNEL, (_event, accountId, payload) => {
-    show(accountId, payload, { onActivate, accountNameFor })
+function registerNotificationBridge({ onActivate, accountIdFor, accountNameFor, onUnreadChange }) {
+  ipcMain.on(channels.NOTIFY, (event, payload) => {
+    // The account is derived from the sender, never taken from the message.
+    // A renderer could otherwise label its notification with another account's
+    // name and steer the click there.
+    const accountId = accountIdFor(event.sender)
+    if (!accountId) return
+    show(accountId, event.sender, payload, { onActivate, accountNameFor })
   })
 
-  ipcMain.on(UNREAD_CHANNEL, (_event, accountId, unreadCount) => {
-    onUnreadChange(accountId, unreadCount)
+  ipcMain.on(channels.UNREAD_REPORTED, (event, unreadCount) => {
+    const accountId = accountIdFor(event.sender)
+    if (!accountId) return
+    onUnreadChange(accountId, Number(unreadCount) || 0)
+  })
+
+  // WhatsApp closes its own notifications when the chat is read elsewhere.
+  // Without this the alert would sit on screen until the daemon expired it.
+  ipcMain.on(channels.NOTIFICATION_CLOSED_BY_PAGE, (event, notificationId) => {
+    const accountId = accountIdFor(event.sender)
+    if (!accountId) return
+    const key = tagKeyByNotificationId.get(notificationId)
+    if (!key || !key.startsWith(`${accountId}:`)) return
+    const live = liveNotificationsByTag.get(key)
+    if (live) {
+      liveNotificationsByTag.delete(key)
+      tagKeyByNotificationId.delete(notificationId)
+      live.close()
+    }
   })
 }
 
-function show(accountId, payload, { onActivate, accountNameFor }) {
+function tagKeyFor(accountId, tag) {
+  return `${accountId}:${tag}`
+}
+
+function show(accountId, sender, payload, { onActivate, accountNameFor }) {
   if (!Notification.isSupported()) return
 
-  const tagKey = `${accountId}:${payload.tag || payload.title}`
-  const previous = liveNotificationsByTag.get(tagKey)
-  if (previous) previous.close()
+  const key = tagKeyFor(accountId, payload.tag || payload.title)
+
+  // Delete before closing. `close()` fires its 'close' event asynchronously,
+  // so a handler that deleted unconditionally would run *after* the
+  // replacement was stored and evict it -- making the next message for this
+  // chat stack instead of replace, which is the exact thing this map prevents.
+  const previous = liveNotificationsByTag.get(key)
+  if (previous) {
+    liveNotificationsByTag.delete(key)
+    previous.close()
+  }
 
   const accountName = accountNameFor(accountId)
 
@@ -57,11 +101,23 @@ function show(accountId, payload, { onActivate, accountNameFor }) {
     urgency: 'normal',
   })
 
-  notification.on('click', () => onActivate(accountId))
-  notification.on('close', () => liveNotificationsByTag.delete(tagKey))
+  notification.on('click', () => {
+    onActivate(accountId)
+    // Hand the click back so WhatsApp opens the chat it came from.
+    if (!sender.isDestroyed()) {
+      sender.send(channels.NOTIFICATION_CLICKED, payload.notificationId)
+    }
+  })
+
+  notification.on('close', () => {
+    // Only clear the entry if it is still this notification's. See above.
+    if (liveNotificationsByTag.get(key) === notification) liveNotificationsByTag.delete(key)
+    tagKeyByNotificationId.delete(payload.notificationId)
+  })
 
   notification.show()
-  liveNotificationsByTag.set(tagKey, notification)
+  liveNotificationsByTag.set(key, notification)
+  tagKeyByNotificationId.set(payload.notificationId, key)
 }
 
-module.exports = { registerNotificationBridge, NOTIFY_CHANNEL, UNREAD_CHANNEL }
+module.exports = { registerNotificationBridge }

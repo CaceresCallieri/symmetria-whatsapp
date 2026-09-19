@@ -61,6 +61,12 @@ function wait(milliseconds) {
 
 // Runs in the page's main world. Reports every trace Surfingkeys leaves in the
 // DOM, so a partial load is distinguishable from no load at all.
+//
+// This probe is the throwaway original and has already drifted: it searches
+// only the light DOM, so it cannot see the Surfingkeys UI frame, which lives
+// inside a shadow root. `scripts/verify-keyboard-layer.js` holds the
+// maintained version -- prefer it, and treat this one as a record of the
+// spike rather than a tool.
 const PROBE_SCRIPT = `(() => {
   const hostSelector = ${JSON.stringify(HINTS_HOST_SELECTOR)}
 

@@ -31,8 +31,15 @@
 const FRAME_DIRECTIVES = ['frame-src', 'child-src']
 const EXTENSION_SCHEME = 'chrome-extension:'
 
-/** Rewrites one CSP header value so extension frames are allowed. */
-function allowExtensionFrames(policy) {
+// A source list that contains 'none' may not contain anything else: per CSP3
+// that combination is invalid, and Chromium responds by warning and ignoring
+// the directive. Appending the extension scheme to `frame-src 'none'` would
+// therefore produce exactly the silent non-application this module exists to
+// prevent, so 'none' is dropped whenever another source joins it.
+const NONE_SOURCE = "'none'"
+
+/** Rewrites one CSP policy so extension frames are allowed. */
+function allowOneExtensionFramePolicy(policy) {
   const directives = policy
     .split(';')
     .map((directive) => directive.trim())
@@ -40,11 +47,16 @@ function allowExtensionFrames(policy) {
 
   const present = new Set(directives.map((directive) => directive.split(/\s+/)[0].toLowerCase()))
 
+  const withExtensionScheme = (name, sources) => {
+    const kept = sources.filter((source) => source !== NONE_SOURCE)
+    return [name, ...kept, EXTENSION_SCHEME].join(' ')
+  }
+
   const patched = directives.map((directive) => {
-    const [name] = directive.split(/\s+/)
+    const [name, ...sources] = directive.split(/\s+/)
     if (!FRAME_DIRECTIVES.includes(name.toLowerCase())) return directive
-    if (directive.includes(EXTENSION_SCHEME)) return directive
-    return `${directive} ${EXTENSION_SCHEME}`
+    if (sources.includes(EXTENSION_SCHEME)) return directive
+    return withExtensionScheme(name, sources)
   })
 
   // With no frame-src of its own, the page falls back to default-src, which
@@ -56,12 +68,28 @@ function allowExtensionFrames(policy) {
       (directive) => directive.split(/\s+/)[0].toLowerCase() === 'default-src'
     )
     if (defaultDirective) {
-      const sources = defaultDirective.split(/\s+/).slice(1).join(' ')
-      patched.push(`frame-src ${sources} ${EXTENSION_SCHEME}`.trim())
+      const sources = defaultDirective.split(/\s+/).slice(1)
+      patched.push(withExtensionScheme('frame-src', sources))
     }
   }
 
   return patched.join('; ')
+}
+
+/**
+ * Rewrites a Content-Security-Policy header value.
+ *
+ * One header value may carry several comma-separated policies, each of which
+ * is enforced independently. Chromium normally hands Electron one policy per
+ * array entry so this rarely matters, but splitting on ';' alone would parse
+ * `default-src 'self', frame-src 'none'` as a single default-src directive and
+ * silently miss the frame-src -- defensive, because the failure would be quiet.
+ */
+function allowExtensionFrames(headerValue) {
+  return headerValue
+    .split(',')
+    .map((policy) => allowOneExtensionFramePolicy(policy))
+    .join(', ')
 }
 
 /**
@@ -93,28 +121,44 @@ function markEmbeddable(headers) {
  */
 function allowExtensionFramesInSession(accountSession) {
   accountSession.webRequest.onHeadersReceived((details, callback) => {
-    const headers = details.responseHeaders
-    if (!headers) return callback({})
+    // Every response in the session passes through here, so a thrown
+    // exception would leave `callback` uncalled and hang that request
+    // forever -- a stalled page with no error anywhere. Any failure must
+    // degrade to "leave the headers exactly as they arrived".
+    try {
+      const headers = details.responseHeaders
+      if (!headers) return callback({})
 
-    let changed = false
+      let changed = false
+      const isDocument = details.resourceType === 'mainFrame' || details.resourceType === 'subFrame'
+      const isExtensionResponse = details.url.startsWith('chrome-extension://')
 
-    for (const name of Object.keys(headers)) {
-      if (name.toLowerCase() !== 'content-security-policy') continue
-      headers[name] = headers[name].map((value) => {
-        const patched = allowExtensionFrames(value)
-        if (patched !== value) changed = true
-        return patched
-      })
+      // Only documents can frame anything, and the extension's own pages
+      // gain nothing from a weaker policy -- narrowing to this case keeps
+      // the relaxation as small as the module claims it is.
+      if (isDocument && !isExtensionResponse) {
+        for (const name of Object.keys(headers)) {
+          if (name.toLowerCase() !== 'content-security-policy') continue
+          headers[name] = headers[name].map((value) => {
+            const patched = allowExtensionFrames(value)
+            if (patched !== value) changed = true
+            return patched
+          })
+        }
+      }
+
+      // Scoped to extension documents being embedded. A subresource does not
+      // need this, and a WhatsApp response must never receive it.
+      if (isExtensionResponse && details.resourceType === 'subFrame') {
+        markEmbeddable(headers)
+        changed = true
+      }
+
+      callback(changed ? { responseHeaders: headers } : {})
+    } catch (error) {
+      console.error(`[frame-policy] header rewrite failed for ${details.url?.slice(0, 120)}:`, error)
+      callback({})
     }
-
-    // Scoped to extension documents being embedded. A subresource does not
-    // need this, and a WhatsApp response must never receive it.
-    if (details.url.startsWith('chrome-extension://') && details.resourceType === 'subFrame') {
-      markEmbeddable(headers)
-      changed = true
-    }
-
-    callback(changed ? { responseHeaders: headers } : {})
   })
 }
 

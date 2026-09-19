@@ -9,10 +9,11 @@
 const path = require('node:path')
 const { app, BrowserWindow, ipcMain, nativeTheme } = require('electron')
 
+const channels = require('../shared/channels')
 const { loadAccounts } = require('./accounts')
 const { AccountViews } = require('./accountViews')
 const { registerNotificationBridge } = require('./notifications')
-const { bindAccountShortcuts } = require('./shortcuts')
+const { bindAccountShortcuts, MAX_DIGIT_SHORTCUTS } = require('./shortcuts')
 const { isExtensionBuilt } = require('./extensions')
 const { TITLE_BAR_HEIGHT, SIDEBAR_WIDTH } = require('./layout')
 
@@ -25,30 +26,47 @@ const APP_ICON = path.resolve(__dirname, '../../resources/icons/whatsapp-256x256
 // application name, so it has to be set before the first window exists.
 app.setName('symmetria-whatsapp')
 
-// Makes Chromium report `prefers-color-scheme: dark` to WhatsApp Web, which its
-// "System default" theme reads to switch itself dark. Without this the web view
-// renders light inside a dark window. The Qt version forced the same thing.
-nativeTheme.themeSource = 'dark'
-
 // Everything below assumes one process owns the account sessions. A second
-// instance would fight the first over the same partition directories.
-if (!app.requestSingleInstanceLock()) app.quit()
+// instance would fight the first over the same partition directories, so it
+// exits immediately -- app.quit() alone would let the rest of this module keep
+// running and touch accounts.json before the quit settled.
+if (!app.requestSingleInstanceLock()) {
+  app.exit(0)
+}
 
 let mainWindow = null
 let accountViews = null
 let accounts = []
+
+/** True when the window is gone or on its way out. */
+function windowIsUsable() {
+  return Boolean(mainWindow) && !mainWindow.isDestroyed()
+}
+
+function sendToShell(channel, ...args) {
+  if (!windowIsUsable()) return
+  mainWindow.webContents.send(channel, ...args)
+}
 
 function accountIndexOf(accountId) {
   return accounts.findIndex((account) => account.id === accountId)
 }
 
 function activate(accountId) {
-  if (!mainWindow || !accountViews) return
+  if (!windowIsUsable()) return
+
   if (mainWindow.isMinimized()) mainWindow.restore()
   mainWindow.show()
   mainWindow.focus()
+
+  // Reachable before any account view exists (a second-instance launch during
+  // startup). Focusing the window is still the right response; broadcasting an
+  // undefined account would clear every sidebar marker and hide the loading
+  // placeholder, leaving an apparently empty app.
+  if (!accountId || !accountViews) return
+
   accountViews.show(accountId)
-  mainWindow.webContents.send('symmetria:active-account', accountId)
+  sendToShell(channels.ACTIVE_ACCOUNT, accountId)
 }
 
 function selectIndex(index) {
@@ -57,7 +75,7 @@ function selectIndex(index) {
 }
 
 function cycle(offset) {
-  if (accounts.length === 0) return
+  if (!accountViews || accounts.length === 0) return
   const current = Math.max(0, accountIndexOf(accountViews.activeAccountId))
   const next = (current + offset + accounts.length) % accounts.length
   selectIndex(next)
@@ -75,22 +93,36 @@ async function createWindow() {
     icon: APP_ICON,
     webPreferences: {
       preload: SHELL_PRELOAD,
+      // The shell preload needs nothing from Node beyond `electron` itself,
+      // so it runs under the same sandbox the account views use.
+      sandbox: true,
       contextIsolation: true,
       nodeIntegration: false,
     },
   })
 
+  mainWindow.on('closed', () => {
+    mainWindow = null
+    accountViews = null
+  })
+
   await mainWindow.loadFile(RENDERER_HTML)
   mainWindow.show()
 
-  accountViews = new AccountViews(mainWindow, (download) => {
-    mainWindow.webContents.send('symmetria:download', download)
-  })
+  accountViews = new AccountViews(
+    mainWindow,
+    (download) => sendToShell(channels.DOWNLOAD, download),
+    (status) => sendToShell(channels.DOWNLOAD, { ...status, state: 'status' })
+  )
 
   // The account views are absolutely positioned, so every resize has to
   // re-run the layout. 'resize' fires continuously while dragging; setBounds
   // is cheap enough that throttling would cost more in lag than it saves.
-  mainWindow.on('resize', () => accountViews.layout())
+  mainWindow.on('resize', () => accountViews?.layout())
+
+  for (const event of ['maximize', 'unmaximize']) {
+    mainWindow.on(event, () => sendToShell(channels.WINDOW_STATE, { maximized: event === 'maximize' }))
+  }
 
   bindAccountShortcuts(mainWindow.webContents, {
     onSelectIndex: selectIndex,
@@ -100,40 +132,58 @@ async function createWindow() {
   // Accounts load one after another rather than all at once. Several WhatsApp
   // Web instances booting in parallel compete for the same CPU, and the first
   // account -- the one the user is about to look at -- gets there later.
+  //
+  // One account failing must not abort the loop: without this guard a single
+  // rejected load left every later account uncreated and the sidebar stuck on
+  // "Loading accounts…" forever.
   for (const account of accounts) {
-    const view = await accountViews.create(account)
-    bindAccountShortcuts(view.webContents, {
-      onSelectIndex: selectIndex,
-      onCycle: cycle,
-    })
+    if (!windowIsUsable()) return
+    try {
+      const view = await accountViews.create(account)
+      bindAccountShortcuts(view.webContents, {
+        onSelectIndex: selectIndex,
+        onCycle: cycle,
+      })
+    } catch (error) {
+      console.error(`[startup] could not create the view for ${account.id}: ${error.message}`)
+    }
   }
 
   if (accounts.length > 0) activate(accounts[0].id)
 }
 
 app.whenReady().then(async () => {
+  // Makes Chromium report `prefers-color-scheme: dark` to WhatsApp Web, which
+  // its "System default" theme reads to switch itself dark. Without this the
+  // web view renders light inside a dark window. Set after ready so no
+  // Electron build can treat it as a premature call. The Qt version forced the
+  // same thing.
+  nativeTheme.themeSource = 'dark'
+
   accounts = loadAccounts()
 
   registerNotificationBridge({
     onActivate: activate,
+    accountIdFor: (webContents) => accountViews?.accountIdFor(webContents) ?? null,
     accountNameFor: (accountId) => accounts[accountIndexOf(accountId)]?.name || '',
     onUnreadChange: (accountId, unreadCount) => {
-      mainWindow?.webContents.send('symmetria:unread', accountId, unreadCount)
+      sendToShell(channels.UNREAD_CHANGED, accountId, unreadCount)
     },
   })
 
   // The renderer asks for this once it is ready, rather than the main process
   // pushing into a page that may not have registered its listeners yet.
-  ipcMain.handle('symmetria:shell-state', () => ({
+  ipcMain.handle(channels.SHELL_STATE, () => ({
     accounts,
     titleBarHeight: TITLE_BAR_HEIGHT,
     sidebarWidth: SIDEBAR_WIDTH,
+    maxDigitShortcuts: MAX_DIGIT_SHORTCUTS,
     keyboardNavigationAvailable: isExtensionBuilt(),
   }))
 
-  ipcMain.on('symmetria:select-account', (_event, accountId) => activate(accountId))
-  ipcMain.on('symmetria:window', (_event, action) => {
-    if (!mainWindow) return
+  ipcMain.on(channels.SELECT_ACCOUNT, (_event, accountId) => activate(accountId))
+  ipcMain.on(channels.WINDOW_ACTION, (_event, action) => {
+    if (!windowIsUsable()) return
     if (action === 'minimize') mainWindow.minimize()
     if (action === 'close') mainWindow.close()
     if (action === 'toggle-maximize') {
@@ -142,10 +192,13 @@ app.whenReady().then(async () => {
   })
 
   await createWindow()
+}).catch((error) => {
+  console.error('[startup] failed:', error)
+  app.exit(1)
 })
 
 app.on('second-instance', () => {
-  if (mainWindow) activate(accountViews?.activeAccountId || accounts[0]?.id)
+  activate(accountViews?.activeAccountId || accounts[0]?.id)
 })
 
 app.on('window-all-closed', () => app.quit())

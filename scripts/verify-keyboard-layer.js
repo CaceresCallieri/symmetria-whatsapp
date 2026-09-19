@@ -54,6 +54,16 @@ function connect(webSocketDebuggerUrl) {
     message.error ? resolver.reject(new Error(message.error.message)) : resolver.resolve(message.result)
   })
 
+  // Without this, an app that quits mid-run leaves every outstanding request
+  // pending forever: the script hangs with no output and no exit code, which
+  // is the worst possible result for something run after an upgrade.
+  socket.addEventListener('close', () => {
+    for (const [, resolver] of pending) {
+      resolver.reject(new Error('the app closed the DevTools connection mid-run'))
+    }
+    pending.clear()
+  })
+
   const ready = new Promise((resolve, reject) => {
     socket.addEventListener('open', resolve, { once: true })
     socket.addEventListener('error', () => reject(new Error('CDP socket failed')), { once: true })
@@ -114,7 +124,24 @@ async function pressKey(client, key) {
   await client.send('Input.dispatchKeyEvent', { type: 'keyDown', ...base })
   await client.send('Input.dispatchKeyEvent', { type: 'char', ...base })
   await client.send('Input.dispatchKeyEvent', { type: 'keyUp', ...base })
-  await wait(1200)
+}
+
+/**
+ * Waits for `predicate` to hold, re-probing until a deadline.
+ *
+ * A fixed sleep after each keypress was the previous approach, and it made
+ * this script a coin toss on a loaded machine: too short and hint mode had
+ * not rendered yet, producing a FAIL indistinguishable from a real
+ * regression. Polling makes a pass fast and a failure deterministic.
+ */
+async function waitFor(client, predicate, timeoutMilliseconds = 5000) {
+  const deadline = Date.now() + timeoutMilliseconds
+  let state = await evaluate(client)
+  while (!predicate(state) && Date.now() < deadline) {
+    await wait(100)
+    state = await evaluate(client)
+  }
+  return state
 }
 
 // Hint mode toggles, so a previous run that left hints on screen would make
@@ -124,7 +151,7 @@ async function resetToNormalMode(client) {
   const escape = { key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 }
   await client.send('Input.dispatchKeyEvent', { type: 'keyDown', ...escape })
   await client.send('Input.dispatchKeyEvent', { type: 'keyUp', ...escape })
-  await wait(600)
+  await waitFor(client, (state) => state.hintCount === 0, 3000)
 }
 
 function report(label, passed, detail) {
@@ -152,13 +179,17 @@ async function main() {
   await resetToNormalMode(client)
   const before = await evaluate(client)
   await pressKey(client, hintKey)
-  const after = await evaluate(client)
+  const after = await waitFor(client, (state) => state.hintCount > 0)
   const liveFrames = await findLiveExtensionFrames()
 
   console.log(`\nTarget: ${after.url}\n`)
 
   const checks = [
-    report('WhatsApp Web loaded (no browser-unsupported wall)', after.title === 'WhatsApp', `title=${JSON.stringify(after.title)}`),
+    // WhatsApp prefixes the unread count into the title ('(3) WhatsApp'),
+    // which the unread badge in src/preload/account.js depends on. An exact
+    // match would fail this check for anyone with unread messages -- a false
+    // FAIL on the most important assertion in the script.
+    report('WhatsApp Web loaded (no browser-unsupported wall)', /^(\(\d+\) )?WhatsApp$/.test(after.title), `title=${JSON.stringify(after.title)}`),
     report('no hints before the key', before.hintCount === 0, `${before.hintCount} hints`),
     report(`hint mode engages on "${hintKey}"`, after.hintCount > 0, `${after.hintCount} hints: ${after.hints.join(' ')}`),
     report('Surfingkeys UI frame present in the page', after.extensionFrames.length > 0, after.extensionFrames.join(', ') || 'no chrome-extension:// iframe in the page'),
@@ -180,7 +211,17 @@ async function main() {
   process.exit(failed === 0 ? 0 : 1)
 }
 
-main().catch((error) => {
+const OVERALL_TIMEOUT_MILLISECONDS = 60000
+
+Promise.race([
+  main(),
+  new Promise((_resolve, reject) =>
+    setTimeout(
+      () => reject(new Error(`gave up after ${OVERALL_TIMEOUT_MILLISECONDS / 1000}s`)),
+      OVERALL_TIMEOUT_MILLISECONDS
+    ).unref()
+  ),
+]).catch((error) => {
   console.error(`verification failed: ${error.message}`)
   process.exit(2)
 })

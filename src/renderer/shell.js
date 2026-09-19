@@ -5,6 +5,9 @@
 
 const accountButtonsById = new Map()
 
+// Published by the main process in the shell state; see src/main/shortcuts.js.
+let maxDigitShortcuts = 0
+
 function initials(name) {
   return name
     .split(/\s+/)
@@ -22,8 +25,11 @@ function buildAccountButton(account, index) {
   button.setAttribute('aria-current', 'false')
 
   // Ctrl+<n> is bound in the main process; naming it in the tooltip is the
-  // only place the shortcut is discoverable.
-  button.title = index < 9 ? `${account.name}  (Ctrl+${index + 1})` : account.name
+  // only place the shortcut is discoverable. The limit comes from the main
+  // process rather than a literal here -- the same drift that layout.js
+  // exists to prevent.
+  button.title =
+    index < maxDigitShortcuts ? `${account.name}  (Ctrl+${index + 1})` : account.name
   button.append(initials(account.name))
 
   const badge = document.createElement('span')
@@ -38,10 +44,16 @@ function buildAccountButton(account, index) {
 }
 
 function setActiveAccount(accountId) {
+  let matched = false
   for (const [id, { button }] of accountButtonsById) {
-    button.setAttribute('aria-current', String(id === accountId))
+    const isActive = id === accountId
+    if (isActive) matched = true
+    button.setAttribute('aria-current', String(isActive))
   }
-  document.getElementById('placeholder').style.display = 'none'
+  // Only retire the placeholder once an account is genuinely on screen.
+  // Hiding it for an unknown account would leave a blank window with no
+  // explanation of what went wrong.
+  if (matched) document.getElementById('placeholder').style.display = 'none'
 }
 
 function setUnread(accountId, unreadCount) {
@@ -70,6 +82,7 @@ async function start() {
   // what stops the CSS and the WebContentsView bounds from drifting apart.
   document.documentElement.style.setProperty('--title-bar-height', `${state.titleBarHeight}px`)
   document.documentElement.style.setProperty('--sidebar-width', `${state.sidebarWidth}px`)
+  maxDigitShortcuts = state.maxDigitShortcuts
 
   const sidebar = document.getElementById('sidebar')
   state.accounts.forEach((account, index) => sidebar.append(buildAccountButton(account, index)))
@@ -88,11 +101,25 @@ async function start() {
     })
   }
 
+  // The maximize button must not keep claiming "Maximize" once the window is
+  // maximized -- the control would be describing the opposite of what it does.
+  window.symmetria.onWindowState(({ maximized }) => {
+    const button = document.querySelector('[data-window-action="toggle-maximize"]')
+    if (!button) return
+    const label = maximized ? 'Restore' : 'Maximize'
+    button.title = label
+    button.setAttribute('aria-label', label)
+    button.classList.toggle('is-maximized', maximized)
+  })
+
   window.symmetria.onActiveAccount(setActiveAccount)
   window.symmetria.onUnread(setUnread)
-  window.symmetria.onDownload(({ filename, state: downloadState }) => {
+  window.symmetria.onDownload((event) => {
+    // The same channel carries account status messages (a failed load, a
+    // crashing view), which have no filename.
+    if (event.state === 'status') return showToast(event.message)
     showToast(
-      downloadState === 'completed' ? `Saved ${filename}` : `Download failed: ${filename}`
+      event.state === 'completed' ? `Saved ${event.filename}` : `Download failed: ${event.filename}`
     )
   })
 }
