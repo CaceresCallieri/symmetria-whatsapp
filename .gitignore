@@ -26,3 +26,11 @@ Thumbs.db
 
 # Project
 *.AppImage
+
+# Node / Electron
+node_modules/
+dist/
+out/
+
+# Built Surfingkeys bundle (6.6 MB of webpack output; rebuild per spike README)
+spike/surfingkeys-electron/surfingkeys-ext/

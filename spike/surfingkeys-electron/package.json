@@ -1,0 +1,11 @@
+{
+  "name": "surfingkeys-electron-spike",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Throwaway spike: does Surfingkeys load and engage inside Electron on WhatsApp Web?",
+  "main": "main.js",
+  "license": "GPL-3.0",
+  "dependencies": {
+    "electron-chrome-extensions": "^4.9.0"
+  }
+}
