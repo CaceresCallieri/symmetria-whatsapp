@@ -1,38 +1,27 @@
 ---
 name: symmetria-whatsapp-overview
-description: "Project goals, architecture decisions, and phased approach for building a Qt6-based WhatsApp wrapper with multi-account and keyboard-first navigation"
+description: "Project goals and architecture for the Electron multi-account WhatsApp wrapper with a rented Surfingkeys keyboard layer"
 metadata: 
   node_type: memory
   type: project
-  originSessionId: e4aa3b17-be28-41ae-b890-35887e88614b
+  originSessionId: e4aa3b17-be28-41ae-b890-35887e88464b
 ---
 
-Symmetria WhatsApp is a Qt6/QML-based WhatsApp desktop wrapper, part of the Symmetria ecosystem (shell, file manager, etc.).
+Symmetria WhatsApp is an Electron multi-account WhatsApp Web wrapper, part of the Symmetria ecosystem (shell, file manager). Its keyboard layer is the Surfingkeys extension, not code this project maintains.
 
-**Why:** The user is dissatisfied with all existing WhatsApp desktop experiences. Needs multi-account support (work + personal numbers) and keyboard-first navigation. QuickShell was considered but ruled out — no WebEngine support, wrong tool for standalone apps.
+**Why:** The user is dissatisfied with every existing WhatsApp desktop client. They need multi-account support (work and personal numbers) and keyboard-first navigation, on Arch Linux and Hyprland.
 
 **How to apply:**
 
-**Phase 1 (Stable wrapper — lives on `main`):**
-- Standalone Qt6/QML app (NOT QuickShell)
-- WebEngineView loading web.whatsapp.com
-- Multi-account via QWebEngineProfile isolation (separate storageName per account)
-- Custom frameless window matching Symmetria design language
-- Notifications via D-Bus (`org.freedesktop.Notifications`) to Symmetria Shell's notification center
-- System tray via StatusNotifierItem
-- Zero ToS ban risk (it's just a browser)
-- NOTE: JS-injection vim navigation + selector registry were REMOVED in the 2026-06-30 pivot — see [[project_frontend_pivot]]. Do not re-add DOM injection for navigation.
+- Runtime is the Arch `electron` package. No build step for application code; `npm run build:extension` builds Surfingkeys into `vendor/`.
+- One persistent session partition per account (`persist:account-<id>`) gives isolated cookies, storage and login. Every account stays loaded, because WhatsApp Web must stay connected to deliver notifications for accounts the user is not looking at.
+- The window is frameless. Its renderer draws the title bar and account sidebar and loads nothing remote; each account's WhatsApp Web is a `WebContentsView` stacked into the same window.
+- Notifications go through the main process so each carries its account name and a click focuses that account.
+- Four platform workarounds exist and must not be removed. See `docs/PRD.md` for the table with reasons: plain-Chrome user agent, `chrome-extension:` added to the page CSP frame directives, forced `navigator.storage.persist`, and replaced `window.Notification`.
+- QuickShell was ruled out early — no WebEngine support, wrong tool for standalone apps.
 
-**Phase 2 (Native keyboard-driven Qt frontend — built on `dev`):**
-- Native Qt/QML UI rendering WhatsApp data directly; WhatsApp is just a data/transport backend
-- Backend architecture is UNDER EVALUATION (research-first): embedded webview (hybrid) / whatsapp-web.js / Matrix bridge / Baileys — no approach committed yet
-- Full keyboard-driven interface, complete message/media management without mouse
-- See [[project_frontend_pivot]] for the decision and rationale
+**The open risk:** Surfingkeys was proven to hint correctly on WhatsApp Web, but only against the logged-out page. Its behaviour inside a real conversation — the `contenteditable` composer stealing focus, the virtualised chat list — is unmeasured. Verifying it needs someone to scan a QR code.
 
-**Key references:**
-- ZapZap (PyQt6, multi-account via QWebEngineProfile)
-- WhatSie (C++ Qt6, most polished single-account wrapper, 3k+ stars)
-- Altus (Electron/SolidJS, multi-account via partitions, JS injection patterns)
-- nchat (C++ TUI, keyboard-first chat UX, native protocol)
+**Key references:** ZapZap (PyQt6), WhatSie (C++ Qt6), Altus (Electron, multi-account via partitions), nchat (C++ TUI, keyboard-first).
 
-**Arch packages needed:** qt6-webengine qt6-declarative qt6-webchannel qt6-positioning qt6-base qt6-svg qt6-wayland
+Related: [[project_frontend_pivot]], [[feedback_auto_rebuild]].

@@ -9,7 +9,7 @@
 const path = require('node:path')
 const { app, session } = require('electron')
 
-const { allowExtensionFramesInSession } = require('./extensionFrameCsp')
+const { allowExtensionFramesInSession } = require('./extensionFramePolicy')
 
 const WHATSAPP_ORIGIN = 'https://web.whatsapp.com'
 

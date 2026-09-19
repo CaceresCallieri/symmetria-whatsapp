@@ -132,6 +132,17 @@ function report(label, passed, detail) {
   return passed
 }
 
+// An <iframe> element in the DOM proves nothing: a frame refused by CSP leaves
+// the element behind with an empty document. Chromium only lists a frame as its
+// own debugging target once it has a real document, so asking the target list
+// is what distinguishes "rendered" from "blocked".
+async function findLiveExtensionFrames() {
+  const targets = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json()
+  return targets
+    .filter((candidate) => candidate.type === 'iframe' && candidate.url.startsWith('chrome-extension://'))
+    .map((candidate) => candidate.url)
+}
+
 async function main() {
   const target = await findWhatsAppTarget()
   const client = connect(target.webSocketDebuggerUrl)
@@ -142,6 +153,7 @@ async function main() {
   const before = await evaluate(client)
   await pressKey(client, hintKey)
   const after = await evaluate(client)
+  const liveFrames = await findLiveExtensionFrames()
 
   console.log(`\nTarget: ${after.url}\n`)
 
@@ -149,7 +161,8 @@ async function main() {
     report('WhatsApp Web loaded (no browser-unsupported wall)', after.title === 'WhatsApp', `title=${JSON.stringify(after.title)}`),
     report('no hints before the key', before.hintCount === 0, `${before.hintCount} hints`),
     report(`hint mode engages on "${hintKey}"`, after.hintCount > 0, `${after.hintCount} hints: ${after.hints.join(' ')}`),
-    report('Surfingkeys UI frame allowed by CSP', after.extensionFrames.length > 0, after.extensionFrames.join(', ') || 'no chrome-extension:// iframe in the page'),
+    report('Surfingkeys UI frame present in the page', after.extensionFrames.length > 0, after.extensionFrames.join(', ') || 'no chrome-extension:// iframe in the page'),
+    report('Surfingkeys UI frame actually rendered (not CSP-blocked)', liveFrames.length > 0, liveFrames.length ? `${liveFrames.length} live frame(s)` : 'the iframe element exists but holds no document'),
     report('Notification is routed to the main process', after.notificationPatched === true, `constructor=${after.notificationPatched}`),
     report('notification permission reported as granted', after.notificationPermission === 'granted', `permission=${after.notificationPermission}`),
   ]

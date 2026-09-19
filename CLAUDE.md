@@ -69,7 +69,11 @@ Each is forced by the platform and documented at its call site. `docs/PRD.md`
 has the full table with reasons.
 
 - Plain-Chrome user agent — WhatsApp walls off the `Electron/` token.
-- `chrome-extension:` added to the page CSP frame directives — real Chrome
-  exempts extension frames from page CSP, Electron does not, and without this
-  the Surfingkeys omnibar silently never renders.
+- `chrome-extension:` added to the page CSP frame directives, **and** a
+  cross-origin isolation opt-in written onto extension frame responses. WhatsApp
+  refuses the Surfingkeys omnibar frame twice over — once by CSP, once by
+  `Cross-Origin-Embedder-Policy: require-corp` — and real Chrome exempts
+  extension frames from both gates while Electron exempts neither. Lifting only
+  one leaves the frame blocked. Both failures are silent: hints keep working, so
+  nothing looks broken.
 - `navigator.storage.persist` forced to resolve true.

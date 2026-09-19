@@ -32,6 +32,11 @@ class AccountViews {
       onCreateTab: (url) => shell.openExternal(url),
     })
 
+    // Loaded into the session before the view exists, so the extension is ready
+    // the moment the first document commits. Extension support is per-session,
+    // so loading it once globally would never reach this account.
+    await loadSurfingkeys(accountSession)
+
     const view = new WebContentsView({
       webPreferences: {
         session: accountSession,
@@ -47,11 +52,8 @@ class AccountViews {
       },
     })
 
-    // Surfingkeys' chrome.tabs calls need a registered tab to act on, and the
-    // extension has to be loaded into this account's own session -- extension
-    // support is per-session, so loading it once globally would not reach here.
+    // Surfingkeys' chrome.tabs calls need a registered tab to act on.
     extensions.addTab(view.webContents, this.window)
-    await loadSurfingkeys(accountSession)
 
     // WhatsApp opens shared links with target=_blank. A chat client should hand
     // those to the real browser rather than navigate away from the inbox.

@@ -70,7 +70,7 @@ src/
 │   ├── accountSession.js     per-account session: partition, UA, permissions, downloads
 │   ├── accountViews.js       one WebContentsView per account, show/hide, layout
 │   ├── extensions.js         Surfingkeys loading per session
-│   ├── extensionFrameCsp.js  CSP rewrite so the extension UI frame renders
+│   ├── extensionFramePolicy.js  CSP and cross-origin-isolation relaxations for the extension frame
 │   ├── notifications.js      web notifications to the desktop daemon
 │   ├── shortcuts.js          account-switching keys
 │   └── layout.js             window geometry, shared with the renderer
@@ -112,7 +112,8 @@ because a future agent will otherwise try to remove them.
 | Workaround | Why it exists | Where |
 |---|---|---|
 | User agent reports plain Chrome | WhatsApp Web serves an "update Google Chrome" wall when it sees the `Electron/<version>` token | `accountSession.js` |
-| `chrome-extension:` added to the page CSP frame directives | Real Chrome exempts extension frames from page CSP; Electron does not, so WhatsApp's CSP refuses the Surfingkeys omnibar frame | `extensionFrameCsp.js` |
+| `chrome-extension:` added to the page CSP frame directives | Real Chrome exempts extension frames from page CSP; Electron does not, so WhatsApp's CSP refuses the Surfingkeys omnibar frame | `extensionFramePolicy.js` |
+| Cross-origin isolation opt-in written onto extension frame responses | WhatsApp sends `Cross-Origin-Embedder-Policy: require-corp`, which refuses any embedded document that does not opt in. Lifting the CSP alone is not enough. WhatsApp's own isolation is untouched — the page still reports `crossOriginIsolated` and keeps `SharedArrayBuffer` | `extensionFramePolicy.js` |
 | `navigator.storage.persist` forced to resolve true | Chromium denies persistence without a user-engagement signal a wrapper never collects | `preload/account.js` |
 | `window.Notification` replaced | Chromium would show notifications itself, losing the account name and giving the click nowhere to go | `preload/account.js` |
 
@@ -227,7 +228,8 @@ translates almost unchanged; it needs a Node D-Bus dependency.
 |------|--------|------------|
 | Surfingkeys disappoints inside a real conversation | High — it is the reason for the whole re-platform | Measure it against a logged-in account before promoting to `main`; fall back to a shipped Surfingkeys configuration |
 | WhatsApp Web changes its user-agent sniffing | Medium | `scripts/verify-keyboard-layer.js` catches it; the wall is loud, not silent |
-| WhatsApp Web changes its CSP shape | Medium | The rewrite handles a missing `frame-src` by deriving one from `default-src`; the verification script asserts the frame loads |
+| WhatsApp Web changes its CSP shape | Medium | The rewrite handles a missing `frame-src` by deriving one from `default-src`; the verification script asserts the frame renders |
+| WhatsApp tightens cross-origin isolation further | Medium | Both gates already fail *silently* — hints keep working while the omnibar does not — so the verification script checks the frame has a live document, not just an element |
 | `electron-chrome-extensions` stops being maintained | Medium | GPL-3.0, so it can be forked. It is the only hard dependency of the keyboard layer |
 | Surfingkeys drops Manifest V2 or V3 support Electron lacks | Low | The build is pinned to a known-good ref; raise it deliberately and re-run the spike |
 | Account ban | Very low | The app runs the official web client unmodified |

@@ -1,3 +1,3 @@
-- [Project Overview](project_overview.md) — Symmetria WhatsApp architecture, phases, key references, and tech decisions (Qt6/QML, not QuickShell)
-- [Auto-rebuild](feedback_auto_rebuild.md) — Always run cmake --build after code changes; user only wants to relaunch the binary
-- [Frontend Pivot](project_frontend_pivot.md) — 2026-06-30: abandoned JS-injection nav; native Qt frontend instead; main=stable, dev=experimental; Phase 2 backend undecided (research-first)
+- [Project Overview](project_overview.md) — Electron multi-account WhatsApp wrapper, rented Surfingkeys keyboard layer, architecture and the open risk
+- [Frontend Pivots](project_frontend_pivot.md) — two pivots on keyboard navigation; why Electron, and what must never be re-attempted
+- [Relaunch, don't build](feedback_auto_rebuild.md) — no build step for app code; verify the keyboard layer after platform changes
