@@ -85,6 +85,10 @@ npm run verify:avatars         # the account picture, IndexedDB to sidebar
 notification daemon running. It fails with that reason rather than a wrong
 answer when there is none.
 
+`verify:avatars` refuses to run against a logged-in account, on purpose: it
+seeds a fake account id and a fake picture into WhatsApp's own store, and
+removing them again would take the real account id with it.
+
 **Run `verify:avatars` last, and restart the app before running anything after
 it.** It reloads each account page over the DevTools protocol, and the
 Surfingkeys UI frame does not come back from a reload driven that way --

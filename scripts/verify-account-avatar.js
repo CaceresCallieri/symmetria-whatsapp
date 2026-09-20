@@ -21,6 +21,12 @@
 // a profile used for verification. On a logged-in profile the store already
 // exists and no version changes.
 //
+// This refuses to run against a logged-in account, and the refusal is not a
+// convenience. Seeding writes a fake id into `last-wid-md` and a fake record
+// into WhatsApp's own profile-picture store, and the cleanup removes them --
+// against a real account that would be overwriting and then deleting the
+// identity WhatsApp keys its own session on.
+//
 // Run this last. It reloads each account page over the DevTools protocol, and
 // the Surfingkeys UI frame does not come back from a reload driven that way,
 // so scripts/verify-keyboard-layer.js reports two failures afterwards that
@@ -131,6 +137,10 @@ const SEED = (rgb, filehash, mediaType) => `(async () => {
   database.close()
   return JSON.stringify({ seeded: true, createdStore, storeCount: stores.length })
 })()`
+
+// Read before anything is written. A profile that has ever been logged in has
+// this key, and that is the signal to stop.
+const READ_OWN_ID = `(() => JSON.stringify({ hasOwnId: localStorage.getItem('last-wid-md') !== null }))()`
 
 const CLEAN_UP = `(async () => {
   localStorage.removeItem('last-wid-md')
@@ -244,6 +254,25 @@ async function main() {
 
   const accountCount = whatsAppPages(targets).length
   if (accountCount === 0) throw new Error('no WhatsApp account view is loaded')
+
+  // Refuse before writing anything. See the note at the top of this file: on
+  // a logged-in profile the seed would overwrite the account's own id and the
+  // cleanup would then delete it.
+  const guardClients = await openAccountPages(targets)
+  try {
+    for (const client of guardClients) {
+      const { hasOwnId } = await evaluateJson(client, READ_OWN_ID)
+      if (hasOwnId) {
+        throw new Error(
+          'this profile is logged in to WhatsApp. This check seeds a fake account id and a ' +
+            'fake picture into WhatsApp\'s own store, and removing them again would take the ' +
+            'real account id with it. Run it against a profile that is not logged in.'
+        )
+      }
+    }
+  } finally {
+    for (const client of guardClients) client.close()
+  }
 
   const shell = connect(shellTarget.webSocketDebuggerUrl)
   await shell.ready
