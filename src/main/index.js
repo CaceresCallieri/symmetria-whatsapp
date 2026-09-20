@@ -1,10 +1,14 @@
 // Application entry point.
 //
-// The window is a frameless BrowserWindow whose own renderer draws the title
-// bar and the account sidebar (src/renderer). Each account's WhatsApp Web sits
-// in a WebContentsView stacked into the same window's content view, positioned
-// by src/main/layout.js. The renderer never loads remote content, so the chrome
-// stays a trusted context while WhatsApp stays sandboxed in its own session.
+// The window is a frameless, undecorated BrowserWindow whose own renderer
+// draws the account sidebar and nothing else (src/renderer). Each account's
+// WhatsApp Web sits in a WebContentsView stacked into the same window's
+// content view, positioned by src/main/layout.js. The renderer never loads
+// remote content, so the chrome stays a trusted context while WhatsApp stays
+// sandboxed in its own session.
+//
+// The window is also transparent, so the desktop shows through the sidebar
+// strip -- see the note on `transparent` in createWindow.
 
 const path = require('node:path')
 const { app, BrowserWindow, ipcMain, nativeTheme } = require('electron')
@@ -15,7 +19,7 @@ const { AccountViews } = require('./accountViews')
 const { registerNotificationBridge } = require('./notifications')
 const { bindAccountShortcuts, MAX_DIGIT_SHORTCUTS } = require('./shortcuts')
 const { isExtensionBuilt } = require('./extensions')
-const { TITLE_BAR_HEIGHT, SIDEBAR_WIDTH } = require('./layout')
+const { SIDEBAR_WIDTH } = require('./layout')
 
 const RENDERER_HTML = path.resolve(__dirname, '../renderer/index.html')
 const SHELL_PRELOAD = path.resolve(__dirname, '../preload/shell.js')
@@ -89,7 +93,14 @@ async function createWindow() {
     minHeight: 480,
     show: false,
     frame: false,
-    backgroundColor: '#0b141a',
+    // The sidebar is drawn at 60% opacity over nothing, so the window itself
+    // has to be able to carry alpha. This can only be set at creation, and it
+    // needs the renderer's <body> to stay transparent as well -- an opaque
+    // body paints over it and the window looks solid with nothing to explain
+    // why. Every other region of the window is covered by an account's
+    // WebContentsView, which is opaque, so WhatsApp itself is unaffected.
+    transparent: true,
+    backgroundColor: '#00000000',
     icon: APP_ICON,
     webPreferences: {
       preload: SHELL_PRELOAD,
@@ -119,10 +130,6 @@ async function createWindow() {
   // re-run the layout. 'resize' fires continuously while dragging; setBounds
   // is cheap enough that throttling would cost more in lag than it saves.
   mainWindow.on('resize', () => accountViews?.layout())
-
-  for (const event of ['maximize', 'unmaximize']) {
-    mainWindow.on(event, () => sendToShell(channels.WINDOW_STATE, { maximized: event === 'maximize' }))
-  }
 
   bindAccountShortcuts(mainWindow.webContents, {
     onSelectIndex: selectIndex,
@@ -175,21 +182,12 @@ app.whenReady().then(async () => {
   // pushing into a page that may not have registered its listeners yet.
   ipcMain.handle(channels.SHELL_STATE, () => ({
     accounts,
-    titleBarHeight: TITLE_BAR_HEIGHT,
     sidebarWidth: SIDEBAR_WIDTH,
     maxDigitShortcuts: MAX_DIGIT_SHORTCUTS,
     keyboardNavigationAvailable: isExtensionBuilt(),
   }))
 
   ipcMain.on(channels.SELECT_ACCOUNT, (_event, accountId) => activate(accountId))
-  ipcMain.on(channels.WINDOW_ACTION, (_event, action) => {
-    if (!windowIsUsable()) return
-    if (action === 'minimize') mainWindow.minimize()
-    if (action === 'close') mainWindow.close()
-    if (action === 'toggle-maximize') {
-      mainWindow.isMaximized() ? mainWindow.unmaximize() : mainWindow.maximize()
-    }
-  })
 
   await createWindow()
 }).catch((error) => {

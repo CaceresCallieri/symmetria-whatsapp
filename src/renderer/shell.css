@@ -1,20 +1,25 @@
 /* Symmetria design language: WhatsApp's dark surfaces, flat, no gradients.
-   --title-bar-height and --sidebar-width are written by shell.js from the
-   values in src/main/layout.js, so the CSS and the WebContentsView bounds
-   cannot drift apart. */
+   --sidebar-width is written by shell.js from the value in
+   src/main/layout.js, so the CSS and the WebContentsView bounds cannot drift
+   apart. */
 
 :root {
-  --title-bar-height: 36px;
   --sidebar-width: 64px;
 
+  /* The sidebar is the only part of this window the desktop shows through, and
+     it is meant to read as the same surface as the terminal beside it. These
+     two values are `background = #000000` and `background-opacity = 0.6` from
+     the ghostty config in the operator's dotfiles; a change to either belongs
+     in both places. */
+  --sidebar-background: rgba(0, 0, 0, 0.6);
+  --sidebar-border: rgba(255, 255, 255, 0.08);
+
   --surface-deep: #0b141a;
-  --surface: #111b21;
   --surface-raised: #202c33;
   --border: #2a3942;
   --text: #e9edef;
   --text-muted: #8696a0;
   --accent: #25d366;
-  --danger: #f15c6d;
   --radius: 10px;
 }
 
@@ -27,79 +32,24 @@ body {
   margin: 0;
   height: 100%;
   overflow: hidden;
-  background: var(--surface-deep);
+  /* Transparent, not a colour. The BrowserWindow is created with
+     `transparent: true`, and an opaque body would paint over that and take
+     the sidebar's translucency with it -- the window would look exactly as it
+     did before, with no error to explain why. Only #sidebar and #placeholder
+     paint a background, and everything else in this window is covered by an
+     account's WebContentsView. */
+  background: transparent;
   color: var(--text);
   font-family: "Inter", "Segoe UI", system-ui, sans-serif;
   font-size: 13px;
   user-select: none;
 }
 
-/* ---------- Title bar ---------- */
-
-#title-bar {
-  position: fixed;
-  inset: 0 0 auto 0;
-  height: var(--title-bar-height);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding-left: 14px;
-  background: var(--surface);
-  border-bottom: 1px solid var(--border);
-  /* Lets the compositor move the window by the bar. The buttons opt back out
-     below, otherwise a click on them starts a drag instead. */
-  -webkit-app-region: drag;
-}
-
-#title-bar-label {
-  font-weight: 600;
-  letter-spacing: 0.01em;
-  color: var(--text-muted);
-}
-
-#window-controls {
-  display: flex;
-  height: 100%;
-  -webkit-app-region: no-drag;
-}
-
-#window-controls button {
-  display: grid;
-  place-items: center;
-  width: 46px;
-  height: 100%;
-  border: 0;
-  background: transparent;
-  color: var(--text-muted);
-  cursor: pointer;
-  transition: background 120ms ease, color 120ms ease;
-}
-
-/* The icons inherit `color`, so the hover rules below restyle them without
-   needing a separate selector per button. */
-#window-controls svg {
-  width: 10px;
-  height: 10px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.2;
-}
-
-#window-controls button:hover {
-  background: var(--surface-raised);
-  color: var(--text);
-}
-
-#window-controls button.close:hover {
-  background: var(--danger);
-  color: #fff;
-}
-
 /* ---------- Account sidebar ---------- */
 
 #sidebar {
   position: fixed;
-  top: var(--title-bar-height);
+  top: 0;
   bottom: 0;
   left: 0;
   width: var(--sidebar-width);
@@ -108,8 +58,8 @@ body {
   align-items: center;
   gap: 10px;
   padding: 12px 0;
-  background: var(--surface);
-  border-right: 1px solid var(--border);
+  background: var(--sidebar-background);
+  border-right: 1px solid var(--sidebar-border);
 }
 
 .account-button {
@@ -174,7 +124,7 @@ body {
 
 #placeholder {
   position: fixed;
-  top: var(--title-bar-height);
+  top: 0;
   left: var(--sidebar-width);
   right: 0;
   bottom: 0;

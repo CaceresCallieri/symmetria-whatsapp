@@ -23,10 +23,8 @@ module.exports = {
   UNREAD_CHANGED: 'symmetria:unread-changed',
   ACTIVE_ACCOUNT: 'symmetria:active-account',
   DOWNLOAD: 'symmetria:download',
-  WINDOW_STATE: 'symmetria:window-state',
 
   // shell renderer -> main
   SHELL_STATE: 'symmetria:shell-state',
   SELECT_ACCOUNT: 'symmetria:select-account',
-  WINDOW_ACTION: 'symmetria:window',
 }

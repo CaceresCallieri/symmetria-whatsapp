@@ -13,25 +13,10 @@
     <link rel="stylesheet" href="shell.css" />
   </head>
   <body>
-    <header id="title-bar">
-      <span id="title-bar-label">Symmetria WhatsApp</span>
-      <!-- Drawn as SVG rather than set as text. The usual glyphs for these
-           three buttons (U+2212, U+2B1C, U+2715) are missing from many Linux
-           font sets and fall back to tofu boxes, which makes minimize and
-           maximize indistinguishable. -->
-      <div id="window-controls">
-        <button type="button" data-window-action="minimize" title="Minimize" aria-label="Minimize">
-          <svg viewBox="0 0 10 10" aria-hidden="true"><path d="M0 5h10" /></svg>
-        </button>
-        <button type="button" data-window-action="toggle-maximize" title="Maximize" aria-label="Maximize">
-          <svg viewBox="0 0 10 10" aria-hidden="true"><rect x="0.5" y="0.5" width="9" height="9" /></svg>
-        </button>
-        <button type="button" data-window-action="close" title="Close" aria-label="Close" class="close">
-          <svg viewBox="0 0 10 10" aria-hidden="true"><path d="M0 0l10 10M10 0L0 10" /></svg>
-        </button>
-      </div>
-    </header>
-
+    <!-- No title bar. The window is frameless and undecorated, so Hyprland
+         moves, resizes and closes it from the keyboard the same way it does
+         every other window. A drawn bar would only take a strip of height and
+         duplicate what the compositor already does. -->
     <nav id="sidebar" aria-label="Accounts"></nav>
 
     <!-- Sits behind the account views, so it is only visible in the gap before

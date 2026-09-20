@@ -2,6 +2,10 @@
 // marker and the unread badges current, and reports clicks back to the main
 // process. It never touches WhatsApp -- each account lives in its own
 // WebContentsView, out of this document's reach.
+//
+// The sidebar is the whole of the chrome. There is no title bar and no
+// window-control buttons: the window is frameless and undecorated, and
+// Hyprland moves, resizes and closes it.
 
 const accountButtonsById = new Map()
 
@@ -78,9 +82,8 @@ function showToast(message) {
 async function start() {
   const state = await window.symmetria.getShellState()
 
-  // The main process owns the geometry. Publishing it as custom properties is
+  // The main process owns the geometry. Publishing it as a custom property is
   // what stops the CSS and the WebContentsView bounds from drifting apart.
-  document.documentElement.style.setProperty('--title-bar-height', `${state.titleBarHeight}px`)
   document.documentElement.style.setProperty('--sidebar-width', `${state.sidebarWidth}px`)
   maxDigitShortcuts = state.maxDigitShortcuts
 
@@ -91,26 +94,6 @@ async function start() {
     document.getElementById('placeholder-message').textContent =
       'Keyboard navigation is off — run `npm run build:extension`.'
   }
-
-  for (const button of document.querySelectorAll('[data-window-action]')) {
-    const action = button.dataset.windowAction
-    button.addEventListener('click', () => {
-      if (action === 'minimize') window.symmetria.minimize()
-      if (action === 'toggle-maximize') window.symmetria.toggleMaximize()
-      if (action === 'close') window.symmetria.close()
-    })
-  }
-
-  // The maximize button must not keep claiming "Maximize" once the window is
-  // maximized -- the control would be describing the opposite of what it does.
-  window.symmetria.onWindowState(({ maximized }) => {
-    const button = document.querySelector('[data-window-action="toggle-maximize"]')
-    if (!button) return
-    const label = maximized ? 'Restore' : 'Maximize'
-    button.title = label
-    button.setAttribute('aria-label', label)
-    button.classList.toggle('is-maximized', maximized)
-  })
 
   window.symmetria.onActiveAccount(setActiveAccount)
   window.symmetria.onUnread(setUnread)

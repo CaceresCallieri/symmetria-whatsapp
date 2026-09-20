@@ -81,17 +81,22 @@ src/
 │   └── account.js            main-world patches inside WhatsApp Web
 ├── shared/
 │   └── channels.js           IPC channel names, used by main and both preloads
-└── renderer/                 the app chrome: title bar and account sidebar
+└── renderer/                 the app chrome: the account sidebar
 
 test/                         node --test suite (npm test)
 scripts/                      build and verification harnesses, driven from
                               outside the app so it carries no test hooks
 ```
 
-The window is a frameless `BrowserWindow`. Its own renderer draws the title bar
-and the account sidebar and never loads remote content, so it stays a trusted
-context. Each account's WhatsApp Web lives in a `WebContentsView` stacked into
-the same window and positioned from `layout.js`.
+The window is a frameless, undecorated, transparent `BrowserWindow`. Its own
+renderer draws the account sidebar and never loads remote content, so it stays
+a trusted context. Each account's WhatsApp Web lives in a `WebContentsView`
+stacked into the same window and positioned from `layout.js`.
+
+There is no title bar. Hyprland already moves, resizes and closes windows from
+the keyboard, so a drawn bar only cost a strip of height and duplicated the
+compositor. Removing it also removed the `WINDOW_ACTION` and `WINDOW_STATE`
+channels and the window-control buttons, which had no other caller.
 
 ### Key decisions
 
@@ -107,6 +112,14 @@ the same window and positioned from `layout.js`.
 - **All accounts stay loaded** — WhatsApp Web must stay connected to deliver
   notifications for an account you are not looking at, so switching accounts
   only re-stacks views and is therefore instant.
+- **The sidebar is translucent, and its opacity is not a free choice.**
+  `rgba(0, 0, 0, 0.6)` in `shell.css` restates `background = #000000` with
+  `background-opacity = 0.6` from the ghostty config in the operator's
+  dotfiles, so the two surfaces read as one on the desktop. A change to either
+  belongs in both. Transparency needs three things together and fails silently
+  if any one is missing: `transparent: true` on the window, which can only be
+  set at creation; a `backgroundColor` carrying alpha; and a transparent
+  `<body>` in the renderer.
 - **Browser-API patches, never markup patches** — `src/preload/account.js`
   replaces `window.Notification` and `navigator.storage`, which are contracts
   with the browser. It reads no WhatsApp markup. That distinction is what
@@ -168,7 +181,7 @@ follow to the others.
 | ID | Requirement | Status |
 |----|-------------|--------|
 | P1-1 | Native notifications forwarded to the Symmetria Shell notification center | Done, default click action only |
-| P1-2 | Symmetria styling: frameless window, custom title bar | Done |
+| P1-2 | Symmetria styling: frameless, undecorated, translucent sidebar | Done |
 | P1-3 | Account management: add, remove, rename, reorder | Not started — edit `accounts.json` by hand |
 | P1-4 | Quick account switcher: `Ctrl+1`..`Ctrl+9`, `Ctrl+Tab` | Done |
 | P1-5 | Download handling with a configurable save path | Partly — saves to the XDG download directory with collision-safe names, not configurable |
