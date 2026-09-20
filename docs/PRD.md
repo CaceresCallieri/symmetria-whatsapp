@@ -204,12 +204,12 @@ follow to the others.
 |----|-------------|--------|
 | P1-1 | Native notifications forwarded to the Symmetria Shell notification center | Done, default click action only |
 | P1-2 | Symmetria styling: frameless, undecorated, translucent sidebar | Done |
-| P1-8 | Round account buttons showing each account's profile picture | Done — read from WhatsApp's IndexedDB and cached to disk, with an `avatar` path in `accounts.json` as an override. Verified by `npm run verify:avatars` |
 | P1-3 | Account management: add, remove, rename, reorder | Not started — edit `accounts.json` by hand |
 | P1-4 | Quick account switcher: `Ctrl+1`..`Ctrl+9`, `Ctrl+Tab` | Done |
 | P1-5 | Download handling with a configurable save path | Partly — saves to the XDG download directory with collision-safe names, not configurable |
 | P1-6 | System tray with per-account unread counts, minimize to tray | Not started |
 | P1-7 | Per-account zoom with persistence | Not started |
+| P1-8 | Round account buttons showing each account's profile picture | Done — read from WhatsApp's IndexedDB and cached to disk, with an `avatar` path in `accounts.json` as an override. Verified by `npm run verify:avatars` |
 
 ### P2 — nice to have
 

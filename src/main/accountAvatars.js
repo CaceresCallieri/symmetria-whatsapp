@@ -26,7 +26,12 @@ const os = require('node:os')
 const path = require('node:path')
 
 const channels = require('../shared/channels')
-const { withinPixelCap, isImageDataUrlWithin } = require('./imageDecoding')
+const {
+  withinPixelCap,
+  isImageDataUrlWithin,
+  withinDecodeBudget,
+  bytesFromImageDataUrl,
+} = require('./imageDecoding')
 
 // The sidebar button is 42 CSS pixels wide. 96 covers a 2x display with room
 // to spare, and keeps the encoded result small enough to travel inside the
@@ -47,6 +52,12 @@ const MAX_AVATAR_DATA_URL_LENGTH = 512 * 1024
 // Where a picture reported by the page is kept, so the button is not blank
 // for the seconds it takes WhatsApp to boot on the next launch.
 const AVATAR_CACHE_DIRECTORY = 'avatars'
+
+// Accepting a reported picture costs a base64 decode, an image decode, a
+// resize, a PNG encode and a synchronous write on the main thread. The page
+// sends one every five minutes at most -- but the page is exactly the party
+// that cannot be trusted to keep to that, so the limit is enforced here too.
+const MIN_MILLISECONDS_BETWEEN_AVATARS = 5000
 
 /**
  * Absolute form of a path written by hand in accounts.json.
@@ -105,6 +116,11 @@ function avatarDataUrlFrom(configuredPath, accountId) {
     return null
   }
 
+  if (!withinDecodeBudget(bytes)) {
+    console.warn(`[avatars] ${accountId}: ${filePath} declares more pixels than this will decode`)
+    return null
+  }
+
   const { nativeImage } = require('electron')
 
   let image
@@ -116,8 +132,8 @@ function avatarDataUrlFrom(configuredPath, accountId) {
   }
   if (!image) {
     console.warn(
-      `[avatars] ${accountId}: ${filePath} is not an image format Chromium decodes ` +
-        '(PNG, JPEG, GIF, WebP and BMP are; SVG is not)'
+      `[avatars] ${accountId}: ${filePath} is not an image format this decodes ` +
+        '(PNG and JPEG only -- GIF, WebP, BMP and SVG all come back empty)'
     )
     return null
   }
@@ -150,8 +166,11 @@ function avatarCachePath(accountId) {
  * @param {Electron.NativeImage} image
  */
 function cacheAvatar(accountId, image) {
-  const filePath = avatarCachePath(accountId)
   try {
+    // Inside the try: avatarCachePath calls app.getPath, which throws before
+    // Electron is ready. A throw escaping here would take the sidebar update
+    // with it and lose a picture that was already decoded and accepted.
+    const filePath = avatarCachePath(accountId)
     fs.mkdirSync(path.dirname(filePath), { recursive: true })
     fs.writeFileSync(filePath, image.toPNG())
   } catch (error) {
@@ -193,9 +212,13 @@ function cachedAvatarDataUrl(accountId) {
 function reportedAvatarImageFrom(source) {
   if (!isImageDataUrlWithin(source, MAX_AVATAR_DATA_URL_LENGTH)) return null
 
+  const bytes = bytesFromImageDataUrl(source)
+  if (!bytes) return null
+  if (!withinDecodeBudget(bytes)) return null
+
   const { nativeImage } = require('electron')
   try {
-    return withinPixelCap(nativeImage.createFromDataURL(source), MAX_AVATAR_PIXELS)
+    return withinPixelCap(nativeImage.createFromBuffer(bytes), MAX_AVATAR_PIXELS)
   } catch {
     return null
   }
@@ -212,6 +235,9 @@ function reportedAvatarImageFrom(source) {
 function registerAccountAvatarBridge({ accountIdFor, configuredAvatarFor, onAvatarChanged }) {
   const { ipcMain } = require('electron')
 
+  /** @type {Map<string, {source: unknown, acceptedAt: number}>} */
+  const lastAcceptedByAccount = new Map()
+
   ipcMain.on(channels.ACCOUNT_AVATAR, (event, source) => {
     // Derived from the sender, never taken from the message. A renderer could
     // otherwise put its picture on another account's button.
@@ -223,12 +249,22 @@ function registerAccountAvatarBridge({ accountIdFor, configuredAvatarFor, onAvat
     // button to a photo the operator never chose.
     if (configuredAvatarFor(accountId)) return
 
+    // Both guards are cheap and both run before the decode, which is the
+    // expensive part. Repeats are ordinary -- the page re-reports after a
+    // reload -- so an unchanged picture is dropped without a warning.
+    const last = lastAcceptedByAccount.get(accountId)
+    if (last) {
+      if (last.source === source) return
+      if (Date.now() - last.acceptedAt < MIN_MILLISECONDS_BETWEEN_AVATARS) return
+    }
+
     const image = reportedAvatarImageFrom(source)
     if (!image) {
       console.warn(`[avatars] ${accountId}: the page reported something that is not a picture`)
       return
     }
 
+    lastAcceptedByAccount.set(accountId, { source, acceptedAt: Date.now() })
     cacheAvatar(accountId, image)
     onAvatarChanged(accountId, image.toDataURL())
   })

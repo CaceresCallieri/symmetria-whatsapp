@@ -17,6 +17,7 @@ const os = require('node:os')
 const path = require('node:path')
 
 const {
+  accountsWithAvatars,
   avatarDataUrlFrom,
   reportedAvatarImageFrom,
   resolveAvatarPath,
@@ -141,4 +142,38 @@ test('refuses a reported picture past the size cap', () => {
   // by WhatsApp's renderer, and the thumbnail it stores is a few kilobytes.
   const oversized = `data:image/png;base64,${'A'.repeat(MAX_AVATAR_DATA_URL_LENGTH)}`
   assert.equal(reportedAvatarImageFrom(oversized), null)
+})
+
+// --- accountsWithAvatars --------------------------------------------------
+
+test('renames the configured path to the picture the renderer receives', () => {
+  // The rename is the thing that stops a filesystem path reaching an
+  // <img src>, where it would silently show nothing: the shell renderer's
+  // Content-Security-Policy allows `img-src 'self' data:` and no `file:`.
+  let accounts
+  warningsFrom(() => {
+    accounts = accountsWithAvatars([
+      { id: 'work', name: 'Work', color: '#53bdeb', avatar: '/nonexistent-avatar.png' },
+    ])
+  })
+
+  assert.equal(accounts.length, 1)
+  assert.ok(!('avatar' in accounts[0]), 'the path must not reach the renderer')
+  assert.ok('avatarDataUrl' in accounts[0], 'the renderer needs an avatarDataUrl key')
+  assert.deepEqual(
+    { id: accounts[0].id, name: accounts[0].name, color: accounts[0].color },
+    { id: 'work', name: 'Work', color: '#53bdeb' }
+  )
+})
+
+test('an account with no picture from either source still has the key', () => {
+  // The renderer reads account.avatarDataUrl unconditionally; an absent key
+  // and a null both fall back to the initials, but only one shape is worth
+  // relying on.
+  let accounts
+  warningsFrom(() => {
+    accounts = accountsWithAvatars([{ id: 'personal', name: 'Personal', color: '#25d366' }])
+  })
+  assert.ok('avatarDataUrl' in accounts[0])
+  assert.equal(accounts[0].avatarDataUrl, null)
 })

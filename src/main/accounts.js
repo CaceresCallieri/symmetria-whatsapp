@@ -17,9 +17,13 @@ const ACCOUNTS_FILE_NAME = 'accounts.json'
 // somewhere else entirely.
 const VALID_ACCOUNT_ID = /^[A-Za-z0-9_-]{1,64}$/
 
+// `avatar` is spelled out rather than left undefined: loadAccounts returns
+// this list unvalidated on four separate paths, so without it an account
+// leaves this module in two different shapes depending on how the app
+// started.
 const DEFAULT_ACCOUNTS = [
-  { id: 'personal', name: 'Personal', color: '#25d366' },
-  { id: 'work', name: 'Work', color: '#53bdeb' },
+  { id: 'personal', name: 'Personal', color: '#25d366', avatar: '' },
+  { id: 'work', name: 'Work', color: '#53bdeb', avatar: '' },
 ]
 
 const DEFAULT_COLOR = '#25d366'

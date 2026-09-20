@@ -11,8 +11,8 @@
     "test": "node --test",
     "verify:keyboard": "node scripts/verify-keyboard-layer.js",
     "verify:notifications": "node scripts/verify-notification-avatar.js",
-    "build:extension": "node scripts/build-surfingkeys.js",
-    "verify:avatars": "node scripts/verify-account-avatar.js"
+    "verify:avatars": "node scripts/verify-account-avatar.js",
+    "build:extension": "node scripts/build-surfingkeys.js"
   },
   "dependencies": {
     "electron-chrome-extensions": "^4.9.0"

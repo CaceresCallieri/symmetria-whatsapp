@@ -59,14 +59,6 @@ async function listTargets(port) {
 }
 
 /**
- * The debugging target for an account's WhatsApp Web view.
- *
- * Both verification scripts start here, so the "which target" question and
- * its diagnostic live in one place. Listing what *was* found matters: the
- * usual cause is the app not running, and the second most usual is it running
- * without --remote-debugging-port, which look identical without it.
- */
-/**
  * Every WhatsApp account view.
  *
  * The `type === 'page'` filter is what makes this correct rather than nearly
@@ -81,6 +73,14 @@ function whatsAppPages(targets) {
   )
 }
 
+/**
+ * The debugging target for an account's WhatsApp Web view.
+ *
+ * Both verification scripts start here, so the "which target" question and
+ * its diagnostic live in one place. Listing what *was* found matters: the
+ * usual cause is the app not running, and the second most usual is it running
+ * without --remote-debugging-port, which look identical without it.
+ */
 async function findWhatsAppPage(port) {
   const targets = await listTargets(port)
   const target = whatsAppPages(targets)[0]

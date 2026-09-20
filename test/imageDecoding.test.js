@@ -13,7 +13,14 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 
-const { withinPixelCap, isImageDataUrlWithin } = require('../src/main/imageDecoding')
+const {
+  withinPixelCap,
+  isImageDataUrlWithin,
+  withinDecodeBudget,
+  declaredDimensions,
+  bytesFromImageDataUrl,
+  MAX_DECODED_PIXELS,
+} = require('../src/main/imageDecoding')
 
 function stubImage(width, height, { empty = false } = {}) {
   return {
@@ -107,4 +114,84 @@ test('rejects a missing or non-string source', () => {
   for (const value of [undefined, null, '', 0, 42, true, {}, [], Buffer.from('x')]) {
     assert.equal(isImageDataUrlWithin(value, 1024), false, `accepted ${JSON.stringify(value)}`)
   }
+})
+
+// --- declaredDimensions / withinDecodeBudget ------------------------------
+//
+// The pixel cap above bounds what the app *keeps*. It cannot bound the
+// decode, because the bytes are fully decompressed before any size is
+// readable -- a 28 KB PNG declaring 9000x9000 allocates ~324 MB in the
+// privileged main process before `withinPixelCap` ever runs. These read the
+// dimensions out of the file header instead, before a decoder sees anything.
+
+/** A PNG header with the given dimensions. Only the IHDR fields matter. */
+function pngHeader(width, height) {
+  const bytes = Buffer.alloc(24)
+  Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(bytes, 0)
+  bytes.write('IHDR', 12, 'latin1')
+  bytes.writeUInt32BE(width, 16)
+  bytes.writeUInt32BE(height, 20)
+  return bytes
+}
+
+/** A JPEG with one APP0 segment before the SOF0 that carries the size. */
+function jpegHeader(width, height) {
+  const app0 = Buffer.from([0xff, 0xe0, 0x00, 0x04, 0x00, 0x00])
+  const sof0 = Buffer.alloc(11)
+  sof0.writeUInt16BE(0xffc0, 0)
+  sof0.writeUInt16BE(8, 2)
+  sof0.writeUInt8(8, 4)
+  sof0.writeUInt16BE(height, 5)
+  sof0.writeUInt16BE(width, 7)
+  return Buffer.concat([Buffer.from([0xff, 0xd8]), app0, sof0, Buffer.alloc(8)])
+}
+
+test('reads the dimensions out of a PNG header', () => {
+  assert.deepEqual(declaredDimensions(pngHeader(96, 96)), { width: 96, height: 96 })
+  assert.deepEqual(declaredDimensions(pngHeader(9000, 4000)), { width: 9000, height: 4000 })
+})
+
+test('reads the dimensions out of a JPEG header, past earlier segments', () => {
+  // The size lives in a start-of-frame segment, which is not the first one.
+  assert.deepEqual(declaredDimensions(jpegHeader(640, 480)), { width: 640, height: 480 })
+})
+
+test('reports nothing for a format whose header it does not read', () => {
+  assert.equal(declaredDimensions(Buffer.from('GIF89a and then some bytes')), null)
+  assert.equal(declaredDimensions(Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"/>')), null)
+  assert.equal(declaredDimensions(Buffer.alloc(0)), null)
+  // Truncated mid-header, which is how a corrupt file arrives.
+  assert.equal(declaredDimensions(pngHeader(96, 96).subarray(0, 20)), null)
+})
+
+test('refuses bytes that declare more pixels than the budget', () => {
+  // A flat 9000x9000 PNG is ~28 KB on the wire and ~324 MB decoded, so no
+  // byte cap can catch it.
+  assert.equal(withinDecodeBudget(pngHeader(9000, 9000)), false)
+  assert.equal(withinDecodeBudget(jpegHeader(20000, 20000)), false)
+})
+
+test('passes an ordinary picture, and anything it cannot read', () => {
+  assert.equal(withinDecodeBudget(pngHeader(96, 96)), true)
+  assert.equal(withinDecodeBudget(jpegHeader(4000, 3000)), true)
+  // Exactly at the budget is within it.
+  assert.equal(withinDecodeBudget(pngHeader(MAX_DECODED_PIXELS, 1)), true)
+  assert.equal(withinDecodeBudget(pngHeader(MAX_DECODED_PIXELS + 1, 1)), false)
+  // An unreadable header is left to the decoder, which is what refused it
+  // before this guard existed. This narrows a blast radius; it does not
+  // decide what counts as an image.
+  assert.equal(withinDecodeBudget(Buffer.from('not an image at all')), true)
+})
+
+test('decodes the bytes carried by a base64 image data URL', () => {
+  const source = `data:image/png;base64,${pngHeader(96, 96).toString('base64')}`
+  assert.deepEqual(declaredDimensions(bytesFromImageDataUrl(source)), { width: 96, height: 96 })
+})
+
+test('refuses a data URL that carries no base64 payload', () => {
+  // Both producers of these URLs are ours and both emit base64, so a
+  // percent-encoded one is not something this app makes.
+  assert.equal(bytesFromImageDataUrl('data:image/svg+xml,%3Csvg%2F%3E'), null)
+  assert.equal(bytesFromImageDataUrl('data:image/png;base64,'), null)
+  assert.equal(bytesFromImageDataUrl('data:image/png'), null)
 })

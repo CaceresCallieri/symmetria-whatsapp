@@ -65,51 +65,63 @@ rather than proceeding on your own reading of the rule.
 
 ## Before you change the platform
 
-Changing any of these breaks the keyboard layer **silently** — the app runs and
-keys simply stop working: the Electron package version, the pinned Surfingkeys
-ref, `electron-chrome-extensions`, `src/main/accountSession.js`,
-`src/main/extensionFramePolicy.js`, or `src/preload/account.js`. Always verify
-afterwards:
+Two paths here fail **silently** — the app keeps running and the feature just
+stops. Verify the one you touched.
+
+- **The keyboard layer.** Changing the Electron package version, the pinned
+  Surfingkeys ref, `electron-chrome-extensions`, `src/main/accountSession.js`,
+  `src/main/extensionFramePolicy.js` or `src/preload/account.js` leaves the app
+  running with the keys dead. Run `verify:keyboard`.
+- **The account picture.** Changing `src/preload/account.js`,
+  `src/main/accountAvatars.js`, `src/main/imageDecoding.js` or
+  `src/main/notificationIcon.js` costs the sidebar button its photo, and the
+  initials it falls back to are also what a correct app shows for an account
+  with no photo. Run `verify:avatars`, and `verify:notifications` for the two
+  image modules, which the notification avatar shares.
 
 ```sh
 # shell 1 — blocks until you stop it
 npm start -- --remote-debugging-port=9222
 
 # shell 2
-npm run verify:keyboard        # exits non-zero if any check fails
-npm run verify:notifications   # the notification path, avatar included
-npm run verify:avatars         # the account picture, IndexedDB to sidebar
+npm run verify:keyboard        # the keyboard layer and its two frame checks
+npm run verify:notifications   # the notification path, sender avatar included
+npm run verify:avatars         # the account picture, WhatsApp's IndexedDB to button
 ```
 
-`verify:notifications` reads the evidence off the session bus, so it needs a
-notification daemon running. It fails with that reason rather than a wrong
-answer when there is none.
+All three exit non-zero when a check fails, so read the exit code rather than
+parsing the output.
 
-`verify:avatars` refuses to run against a logged-in account, on purpose: it
-seeds a fake account id and a fake picture into WhatsApp's own store, and
-removing them again would take the real account id with it.
+Two of them refuse to run when a precondition is missing, and a refusal is not
+a failure of your change: `verify:notifications` needs a notification daemon on
+the session bus, and `verify:avatars` needs an account that is **not** logged in
+(it seeds a fake id into WhatsApp's own store, and cleaning that up again would
+take a real account id with it). When one refuses, say which checks ran and
+which refused — never report the change as verified on the strength of a check
+that refused.
 
-**Run `verify:avatars` last, and restart the app before running anything after
-it.** It reloads each account page over the DevTools protocol, and the
-Surfingkeys UI frame does not come back from a reload driven that way --
-`verify:keyboard` then reports its two frame checks as failures that have
-nothing to do with the app.
+**Run `verify:avatars` last.** It reloads each account page over the DevTools
+protocol, and the Surfingkeys UI frame does not come back from a reload driven
+that way, so `verify:keyboard` afterwards reports two frame failures that have
+nothing to do with your change. Restart the app before any further check.
 
 Stop the app when you are done. The app needs a display: on a headless machine
 run it under `Xvfb` (`xvfb-run -a --server-args='-screen 0 1400x900x24' npm
 start -- --remote-debugging-port=9222`).
 
-`npm test` covers the pure functions whose failure is silent: the CSP
-rewriter, the channel names the preloads have to inline, what the main process
-will accept as a notification avatar, the pixel cap both image decoders share,
-and how an account's configured picture path is resolved. `spike/surfingkeys-electron` is a lower-level harness for when the
-question is whether the extension works in Electron at all, rather than whether
-this app wired it up correctly; run it with
+`npm test` covers the pure functions whose failure is silent — the CSP
+rewriter, the channel names the preloads have to inline, and the image caps and
+decoding rules that guard what the main process will accept. See `test/` for
+the current set.
+
+`spike/surfingkeys-electron` is a lower-level harness for when the question is
+whether the extension works in Electron at all, rather than whether this app
+wired it up correctly; run it with
 `cd spike/surfingkeys-electron && npm install && electron .`.
 
 ## Workarounds that must not be removed
 
-Six of them, each forced by the platform and documented at its call site.
+Each is forced by the platform and documented at its call site.
 `docs/PRD.md` §"Workarounds that the platform forces" is the canonical list with
 reasons. The one thing worth knowing before you act: **the two frame-policy
 workarounds fail silently.** WhatsApp refuses the Surfingkeys omnibar frame

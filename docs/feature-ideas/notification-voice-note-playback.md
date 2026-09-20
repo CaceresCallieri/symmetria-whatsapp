@@ -188,4 +188,4 @@ After kicking off playback, optionally: modify the notification in-place (D-Bus 
 - Selector registry (for future voice-note selector entries): `resources/selectors.json`.
 - Freedesktop Notifications spec: https://specifications.freedesktop.org/notification-spec/latest/
 - `QWebEngineNotification` API surface: Qt docs confirm no audio payload access.
-- Related file: `docs/feature-ideas/profile-picture-avatars.md` (similar injected-JS-into-WebEngineView pattern).
+- Related: `docs/PRD.md` §"An account's own profile picture is read from WhatsApp's IndexedDB"

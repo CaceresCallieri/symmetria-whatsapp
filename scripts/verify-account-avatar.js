@@ -4,11 +4,11 @@
 // -> IPC -> src/main/accountAvatars.js -> the disk cache -> the shell
 // renderer.
 //
-// Every step is silent. A renamed object store, a `connect-src` that stops
-// allowing pps.whatsapp.net, a data URL the main process refuses -- each one
-// costs the button its picture and leaves the initials, which is also exactly
-// what a correct app shows for an account that has no photo. Nothing looks
-// wrong at any point.
+// Every step is silent. A renamed object store, a data URL the main process
+// refuses, a cap that drifted out of step with the page's -- each one costs
+// the button its picture and leaves the initials, which is also exactly what
+// a correct app shows for an account that has no photo. Nothing looks wrong
+// at any point.
 //
 // The picture is seeded rather than waited for, so this does not need a
 // logged-in account: it writes a known image into the same object store
@@ -56,9 +56,15 @@ const OVERALL_TIMEOUT_MILLISECONDS = 120000
 // reload finds it -- this only has to cover the reload itself.
 const BUTTON_TIMEOUT_MILLISECONDS = 45000
 
-// Distinct from WhatsApp's greens, so a button that happens to already show a
-// picture cannot be mistaken for this run's.
-const PROBE_RGB = [255, 0, 255]
+// The account id this seeds under. Also the marker that a previous run died
+// before its cleanup: the guard treats this exact value as leftover rather
+// than as a real login.
+const PROBE_ACCOUNT = '10000000000@c.us'
+const PROBE_OWN_ID = JSON.stringify('10000000000:1@c.us')
+
+// Unique per run, so "this run's picture" is a claim that can actually fail.
+// A leftover on the button from an earlier run has a different blue channel.
+const PROBE_RGB = [255, 0, (Date.now() % 200) + 55]
 const REFUSED_PROBE_RGB = [0, 128, 255]
 
 // Electron's userData directory. Derived rather than asked for: this script
@@ -79,8 +85,8 @@ const AVATAR_CACHE_DIRECTORY = path.join(USER_DATA, 'avatars')
  * offline -- what is under test is the path, not WhatsApp's CDN.
  */
 const SEED = (rgb, filehash, mediaType) => `(async () => {
-  const WID = '10000000000@c.us'
-  localStorage.setItem('last-wid-md', JSON.stringify('10000000000:1@c.us'))
+  const WID = ${JSON.stringify(PROBE_ACCOUNT)}
+  localStorage.setItem('last-wid-md', ${JSON.stringify(PROBE_OWN_ID)})
 
   const picture = () => {
     ${
@@ -106,6 +112,11 @@ const SEED = (rgb, filehash, mediaType) => `(async () => {
     }
     request.onsuccess = () => resolve(request.result)
     request.onerror = () => reject(request.error)
+    // WhatsApp's own page holds a connection to this database, so a version
+    // change can block indefinitely. Without this the seed never settles and
+    // the whole run dies on the overall timeout.
+    request.onblocked = () =>
+      reject(new Error('model-storage upgrade blocked by another connection'))
   })
 
   let database = await open()
@@ -139,8 +150,11 @@ const SEED = (rgb, filehash, mediaType) => `(async () => {
 })()`
 
 // Read before anything is written. A profile that has ever been logged in has
-// this key, and that is the signal to stop.
-const READ_OWN_ID = `(() => JSON.stringify({ hasOwnId: localStorage.getItem('last-wid-md') !== null }))()`
+// this key, and that is the signal to stop -- unless the value is this
+// script's own probe id, which means an earlier run died before its cleanup.
+// Treating that as a login would lock every future run out permanently, with
+// a message naming the wrong cause.
+const READ_OWN_ID = `(() => JSON.stringify({ ownId: localStorage.getItem('last-wid-md') }))()`
 
 const CLEAN_UP = `(async () => {
   localStorage.removeItem('last-wid-md')
@@ -152,7 +166,7 @@ const CLEAN_UP = `(async () => {
   if (database.objectStoreNames.contains('profile-pic-thumb')) {
     await new Promise((resolve) => {
       const transaction = database.transaction('profile-pic-thumb', 'readwrite')
-      transaction.objectStore('profile-pic-thumb').delete('10000000000@c.us')
+      transaction.objectStore('profile-pic-thumb').delete(${JSON.stringify(PROBE_ACCOUNT)})
       transaction.oncomplete = () => resolve()
       transaction.onerror = () => resolve()
     })
@@ -261,14 +275,13 @@ async function main() {
   const guardClients = await openAccountPages(targets)
   try {
     for (const client of guardClients) {
-      const { hasOwnId } = await evaluateJson(client, READ_OWN_ID)
-      if (hasOwnId) {
-        throw new Error(
-          'this profile is logged in to WhatsApp. This check seeds a fake account id and a ' +
-            'fake picture into WhatsApp\'s own store, and removing them again would take the ' +
-            'real account id with it. Run it against a profile that is not logged in.'
-        )
-      }
+      const { ownId } = await evaluateJson(client, READ_OWN_ID)
+      if (ownId === null || ownId === PROBE_OWN_ID) continue
+      throw new Error(
+        'this profile is logged in to WhatsApp. This check seeds a fake account id and a ' +
+          'fake picture into WhatsApp\'s own store, and removing them again would take the ' +
+          'real account id with it. Run it against a profile that is not logged in.'
+      )
     }
   } finally {
     for (const client of guardClients) client.close()
@@ -278,9 +291,19 @@ async function main() {
   await shell.ready
   await shell.send('Runtime.enable')
 
-  const cachedBefore = fs.existsSync(AVATAR_CACHE_DIRECTORY)
-    ? fs.readdirSync(AVATAR_CACHE_DIRECTORY)
-    : []
+  // Name plus mtime, not just name: from the second run onwards the
+  // directory is never empty, and a presence check would pass without the
+  // app having written anything at all.
+  const cacheFingerprint = () => {
+    if (!fs.existsSync(AVATAR_CACHE_DIRECTORY)) return new Map()
+    return new Map(
+      fs.readdirSync(AVATAR_CACHE_DIRECTORY).map((name) => {
+        const { mtimeMs, size } = fs.statSync(path.join(AVATAR_CACHE_DIRECTORY, name))
+        return [name, `${mtimeMs}:${size}`]
+      })
+    )
+  }
+  const cachedBefore = cacheFingerprint()
 
   try {
     console.log(`\nAccount views: ${accountCount}\nAvatar cache: ${AVATAR_CACHE_DIRECTORY}\n`)
@@ -288,16 +311,18 @@ async function main() {
     const seeded = await seedAndReload(targets, PROBE_RGB, 'probe-hash-1', 'image/png')
     const afterSeed = await waitForColour(shell, PROBE_RGB, BUTTON_TIMEOUT_MILLISECONDS)
 
-    const cachedAfter = fs.existsSync(AVATAR_CACHE_DIRECTORY)
-      ? fs.readdirSync(AVATAR_CACHE_DIRECTORY)
-      : []
-    const newlyCached = cachedAfter.filter((name) => !cachedBefore.includes(name))
+    const cachedAfter = cacheFingerprint()
+    const newlyCached = [...cachedAfter]
+      .filter(([name, stamp]) => cachedBefore.get(name) !== stamp)
+      .map(([name]) => name)
 
     // A picture that is not a picture must be refused by the main process.
     // The button keeps the one it already has rather than going blank.
     await seedAndReload(await listTargets(port), REFUSED_PROBE_RGB, 'probe-hash-2', 'text/plain')
-    await wait(20000)
-    const afterRefused = await evaluateJson(shell, READ_BUTTONS)
+    // Returns the moment the refused colour appears -- which is the failure
+    // this asserts against -- and otherwise runs out the clock. A bare sleep
+    // could not fail early, and hid why it was waiting.
+    const afterRefused = await waitForColour(shell, REFUSED_PROBE_RGB, BUTTON_TIMEOUT_MILLISECONDS)
 
     const describe = (buttons) =>
       buttons
@@ -316,14 +341,16 @@ async function main() {
         describe(afterSeed)
       ),
       report(
-        'it is this run’s picture and not a leftover',
-        showsColour(afterSeed, PROBE_RGB),
-        `expected a button at ${PROBE_RGB.join(',')}`
+        'every button showing a picture shows this run’s, not a leftover',
+        afterSeed.every((button) => !button.showsPicture || String(button.rgb) === String(PROBE_RGB)),
+        `this run is ${PROBE_RGB.join(',')} — ${describe(afterSeed)}`
       ),
       report(
         'the picture is cached to disk for the next launch',
-        newlyCached.length > 0 || cachedBefore.length > 0,
-        newlyCached.length > 0 ? `wrote ${newlyCached.join(', ')}` : `already held ${cachedBefore.join(', ')}`
+        newlyCached.length > 0,
+        newlyCached.length > 0
+          ? `wrote ${newlyCached.join(', ')}`
+          : `nothing new in ${AVATAR_CACHE_DIRECTORY}`
       ),
       report(
         'a reported picture that is not an image is refused',

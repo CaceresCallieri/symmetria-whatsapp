@@ -102,6 +102,9 @@ const MAIN_WORLD_PATCHES = `(() => {
   const PageFileReader = window.FileReader
 
   const ICON_TIMEOUT_MILLISECONDS = 2000
+  // Paired with MAX_ICON_DATA_URL_LENGTH in src/main/notificationIcon.js,
+  // which admits 700 KiB of characters -- enough for the 4/3 that base64
+  // adds to these bytes.
   const MAX_ICON_BYTES = 512 * 1024
 
   const blobToDataUrl = (blob) =>
@@ -288,7 +291,15 @@ const MAIN_WORLD_PATCHES = `(() => {
   const PROFILE_STORE = 'profile-pic-thumb'
   const OWN_ID_KEY = 'last-wid-md'
 
-  const MAX_PROFILE_PICTURE_BYTES = 512 * 1024
+  // The main process refuses anything longer than MAX_AVATAR_DATA_URL_LENGTH
+  // in src/main/accountAvatars.js, which is 512 KiB of characters. Base64
+  // inflates these bytes by 4/3 and the 'data:image/jpeg;base64,' prefix adds
+  // a few more, so the byte cap has to sit below 384 KiB for the result to
+  // fit. It does not simply clip a large picture: the main process refuses
+  // the whole data URL, and the button keeps its initials.
+  // test/preloadImageCaps.test.js pins the two numbers together.
+  const MAX_PROFILE_PICTURE_BYTES = 380 * 1024
+  const MAX_PROFILE_PICTURE_DATA_URL_LENGTH = 512 * 1024
   // Two rates, because the two things being waited for are different. Before
   // a picture has ever been found the wait is for WhatsApp to finish booting,
   // or for a fresh login to sync, which happens in seconds. After that the
@@ -301,6 +312,10 @@ const MAIN_WORLD_PATCHES = `(() => {
       const request = indexedDB.open(PROFILE_DATABASE)
       request.onsuccess = () => resolve(request.result)
       request.onerror = () => reject(request.error)
+      // An open waits indefinitely while another connection holds the
+      // database through a version change. WhatsApp upgrades this database
+      // on its own schedule, and without this the promise never settles.
+      request.onblocked = () => reject(new Error('model-storage is blocked by another connection'))
       // Only reached when the database does not exist, which means WhatsApp
       // has not created it yet. Letting the upgrade run would create an empty
       // one at a version this code invented, and WhatsApp would then open its
@@ -319,7 +334,10 @@ const MAIN_WORLD_PATCHES = `(() => {
     }
     if (typeof wid !== 'string') return null
     // The picture is keyed by the account, so the device suffix comes off.
-    return wid.replace(/:\\d+/, '')
+    // Anchored to the '@' rather than matching the first ':digits' anywhere,
+    // so an id that ever carries an earlier colon is not silently mangled
+    // into a key that finds nothing.
+    return wid.replace(/:\\d+(?=@)/, '')
   }
 
   const readProfilePictureRecord = async () => {
@@ -349,30 +367,53 @@ const MAIN_WORLD_PATCHES = `(() => {
 
   const reportProfilePicture = async () => {
     const record = await readProfilePictureRecord()
+    // No record at all means WhatsApp has not synced this account's pictures
+    // yet, so there is still something to wait for.
+    if (!record) return false
     // A record with no previewEurl is an account with no photo set. That is
     // a found answer, not a miss: there is nothing to keep waiting for.
-    if (!record) return false
     if (typeof record.previewEurl !== 'string') return true
 
     if (record.filehash && record.filehash === lastReportedFilehash) return true
 
     const dataUrl = await imageDataUrlFrom(record.previewEurl, MAX_PROFILE_PICTURE_BYTES)
     if (!dataUrl) return false
+    // Guards the byte cap above against drifting away from the character cap
+    // in the main process. Returning here leaves lastReportedFilehash alone,
+    // so the next poll tries again rather than recording as delivered a
+    // picture the main process is about to refuse.
+    if (dataUrl.length > MAX_PROFILE_PICTURE_DATA_URL_LENGTH) return false
 
     lastReportedFilehash = record.filehash || null
     bridge.reportAccountAvatar(dataUrl)
     return true
   }
 
+  // Neither the IndexedDB open nor the fetch carries a deadline of its own,
+  // and the loop below only rearms once an attempt settles. One attempt that
+  // never settles would stop the picture polling for the life of the page,
+  // with nothing to show for it.
+  const PICTURE_ATTEMPT_TIMEOUT_MILLISECONDS = 20000
+
+  // After this many fruitless attempts the account is treated as one whose
+  // picture is not coming. An account that is never logged in would
+  // otherwise read IndexedDB every 15 seconds for as long as the app runs.
+  const MAX_FAST_PICTURE_ATTEMPTS = 20
+
+  let consecutivePictureMisses = 0
+
   const pollProfilePicture = () => {
-    reportProfilePicture()
-      .catch(() => false)
-      .then((found) => {
-        setTimeout(
-          pollProfilePicture,
-          found ? PICTURE_POLL_ONCE_FOUND_MILLISECONDS : PICTURE_POLL_WHILE_MISSING_MILLISECONDS
-        )
-      })
+    Promise.race([
+      reportProfilePicture().catch(() => false),
+      new Promise((resolve) => setTimeout(resolve, PICTURE_ATTEMPT_TIMEOUT_MILLISECONDS, false)),
+    ]).then((found) => {
+      consecutivePictureMisses = found ? 0 : consecutivePictureMisses + 1
+      const settled = found || consecutivePictureMisses >= MAX_FAST_PICTURE_ATTEMPTS
+      setTimeout(
+        pollProfilePicture,
+        settled ? PICTURE_POLL_ONCE_FOUND_MILLISECONDS : PICTURE_POLL_WHILE_MISSING_MILLISECONDS
+      )
+    })
   }
 
   pollProfilePicture()

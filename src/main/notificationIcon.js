@@ -18,15 +18,21 @@
 // keeps the acceptance rules in the same file as the code they guard, so a
 // reader judging what the main process will accept has it all in one place.
 
-const { withinPixelCap, isImageDataUrlWithin } = require('./imageDecoding')
+const {
+  withinPixelCap,
+  isImageDataUrlWithin,
+  withinDecodeBudget,
+  bytesFromImageDataUrl,
+} = require('./imageDecoding')
 
 // Base64 inflates by about a third, so this admits roughly 512 KiB of image.
 // A notification avatar is a thumbnail; anything larger is not one.
 const MAX_ICON_DATA_URL_LENGTH = 700 * 1024
 
-// A compressed image says nothing about its decoded size -- a flat 4000x4000
-// PNG is a few kilobytes on the wire and 64 MB as a pixbuf. The byte cap above
-// cannot catch that, so the pixel cap does.
+// What the notification is allowed to keep. This bounds retained memory, not
+// the memory the decode itself takes -- a compressed image says nothing about
+// its decoded size, and by the time a size is readable the bytes are already
+// decompressed. `withinDecodeBudget` below is what guards the decode.
 const MAX_ICON_PIXELS = 256
 
 /**
@@ -51,11 +57,18 @@ function isAcceptableIconDataUrl(source) {
 function notificationIconFrom(source) {
   if (!isAcceptableIconDataUrl(source)) return null
 
+  // Decoded from the data URL here rather than handed to
+  // `createFromDataURL`, so the header can be read before anything
+  // decompresses it.
+  const bytes = bytesFromImageDataUrl(source)
+  if (!bytes) return null
+  if (!withinDecodeBudget(bytes)) return null
+
   const { nativeImage } = require('electron')
 
   let image
   try {
-    image = nativeImage.createFromDataURL(source)
+    image = nativeImage.createFromBuffer(bytes)
   } catch {
     return null
   }

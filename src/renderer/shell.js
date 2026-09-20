@@ -35,7 +35,13 @@ function setAvatar(entry, avatarDataUrl) {
   const hasAvatar = typeof avatarDataUrl === 'string' && avatarDataUrl !== ''
   // Assigned before the toggle, so the button never shows an empty frame in
   // the moment between the initials going and the picture arriving.
-  if (hasAvatar) entry.avatar.src = avatarDataUrl
+  if (hasAvatar) {
+    entry.avatar.src = avatarDataUrl
+  } else {
+    // Cleared rather than left behind, so the decoded bitmap is not held for
+    // a picture the button is no longer showing.
+    entry.avatar.removeAttribute('src')
+  }
   entry.avatar.hidden = !hasAvatar
   entry.initialsText.hidden = hasAvatar
 }
@@ -58,16 +64,24 @@ function buildAccountButton(account, index) {
   // screen reader to announce an unlabelled button.
   button.setAttribute('aria-label', account.name)
 
+  const initialsText = document.createElement('span')
+  initialsText.className = 'account-initials'
+  initialsText.textContent = initials(account.name)
+
   // Decorative: the button is already named by aria-label, and an alt text
   // here would have a screen reader announce the account twice.
   const avatar = document.createElement('img')
   avatar.className = 'account-avatar'
   avatar.alt = ''
   avatar.hidden = true
-
-  const initialsText = document.createElement('span')
-  initialsText.className = 'account-initials'
-  initialsText.textContent = initials(account.name)
+  // The initials are hidden the moment a src is set, before the browser has
+  // decoded it. Without this a src that fails to render leaves the button
+  // completely blank -- worse than the fallback the whole design rests on.
+  avatar.addEventListener('error', () => {
+    avatar.removeAttribute('src')
+    avatar.hidden = true
+    initialsText.hidden = false
+  })
 
   const badge = document.createElement('span')
   badge.className = 'account-badge'
