@@ -15,8 +15,10 @@
 // file. Electron is an Arch system package here and not a node_modules
 // dependency, so `require('electron')` throws under plain Node -- and
 // test/notificationIcon.test.js runs under plain Node. Deferring the require
-// keeps the acceptance rules in the same file as the code they guard, instead
-// of splitting one small concept across two modules to make it testable.
+// keeps the acceptance rules in the same file as the code they guard, so a
+// reader judging what the main process will accept has it all in one place.
+
+const { withinPixelCap } = require('./imageDecoding')
 
 const ICON_DATA_URL_PREFIX = 'data:image/'
 
@@ -62,16 +64,7 @@ function notificationIconFrom(source) {
     return null
   }
 
-  // createFromDataURL reports a format it cannot decode by returning an empty
-  // image rather than by throwing. SVG is the case that reaches here.
-  if (image.isEmpty()) return null
-
-  const { width, height } = image.getSize()
-  if (Math.max(width, height) <= MAX_ICON_PIXELS) return image
-
-  // Resizing one dimension keeps the aspect ratio; it has to be the larger one
-  // or the other dimension stays over the cap.
-  return image.resize(width >= height ? { width: MAX_ICON_PIXELS } : { height: MAX_ICON_PIXELS })
+  return withinPixelCap(image, MAX_ICON_PIXELS)
 }
 
 module.exports = {

@@ -1,8 +1,9 @@
 // Account list persistence.
 //
-// An account is just a name, a colour and a stable id. The id is what names the
-// session partition and the storage directory, so it must never change once an
-// account has logged in -- renaming an account changes `name` only.
+// An account is a name, a colour, a stable id and an optional picture. The id
+// is what names the session partition and the storage directory, so it must
+// never change once an account has logged in -- renaming an account changes
+// `name` only.
 
 const fs = require('node:fs')
 const path = require('node:path')
@@ -63,6 +64,13 @@ function validateAccounts(parsed) {
       id: entry.id,
       name: entry.name,
       color: typeof entry.color === 'string' ? entry.color : DEFAULT_COLOR,
+      // A path to the picture on the sidebar button. Only its type is checked
+      // here. Whether the file exists and decodes is decided later, by
+      // src/main/accountAvatars.js, because an account whose picture has been
+      // moved or deleted is still a working account -- it falls back to its
+      // initials. Dropping the whole account over it would hide a logged-in
+      // session behind a typo in an optional field.
+      avatar: typeof entry.avatar === 'string' ? entry.avatar : '',
     })
   }
 

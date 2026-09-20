@@ -15,6 +15,7 @@ const { app, BrowserWindow, ipcMain, nativeTheme } = require('electron')
 
 const channels = require('../shared/channels')
 const { loadAccounts } = require('./accounts')
+const { accountsWithAvatars } = require('./accountAvatars')
 const { AccountViews } = require('./accountViews')
 const { registerNotificationBridge } = require('./notifications')
 const { bindAccountShortcuts, MAX_DIGIT_SHORTCUTS } = require('./shortcuts')
@@ -181,7 +182,9 @@ app.whenReady().then(async () => {
   // The renderer asks for this once it is ready, rather than the main process
   // pushing into a page that may not have registered its listeners yet.
   ipcMain.handle(channels.SHELL_STATE, () => ({
-    accounts,
+    // Each account's configured picture is read from disk and sent as a data
+    // URL, never as the path. See src/main/accountAvatars.js.
+    accounts: accountsWithAvatars(accounts),
     sidebarWidth: SIDEBAR_WIDTH,
     maxDigitShortcuts: MAX_DIGIT_SHORTCUTS,
     keyboardNavigationAvailable: isExtensionBuilt(),

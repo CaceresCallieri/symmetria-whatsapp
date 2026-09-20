@@ -89,8 +89,9 @@ run it under `Xvfb` (`xvfb-run -a --server-args='-screen 0 1400x900x24' npm
 start -- --remote-debugging-port=9222`).
 
 `npm test` covers the pure functions whose failure is silent: the CSP
-rewriter, the channel names the preloads have to inline, and what the main
-process will accept as a notification avatar. `spike/surfingkeys-electron` is a lower-level harness for when the
+rewriter, the channel names the preloads have to inline, what the main process
+will accept as a notification avatar, the pixel cap both image decoders share,
+and how an account's configured picture path is resolved. `spike/surfingkeys-electron` is a lower-level harness for when the
 question is whether the extension works in Electron at all, rather than whether
 this app wired it up correctly; run it with
 `cd spike/surfingkeys-electron && npm install && electron .`.

@@ -12,5 +12,4 @@ A parking lot for feature ideas that have been researched but not yet implemente
 
 | File | Status | One-liner |
 |------|--------|-----------|
-| [profile-picture-avatars.md](./profile-picture-avatars.md) | Research Complete — Ready for Implementation | Show real WhatsApp profile pictures in the account sidebar instead of letter initials. |
 | [notification-voice-note-playback.md](./notification-voice-note-playback.md) | Research Complete — Not Yet Scoped | Play voice-note notifications directly from the Symmetria Shell notification center without stealing window focus. |

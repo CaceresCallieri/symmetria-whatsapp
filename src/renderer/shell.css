@@ -64,10 +64,17 @@ body {
 
 .account-button {
   position: relative;
+  /* Round, so an account reads as a person rather than as an app tile. The
+     picture is clipped to the same circle by .account-avatar's own radius,
+     not by `overflow: hidden` here -- the active marker and the unread badge
+     both sit outside the button box and hiding the overflow erases them. */
+  display: grid;
+  place-items: center;
   width: 42px;
   height: 42px;
+  padding: 0;
   border: 2px solid transparent;
-  border-radius: var(--radius);
+  border-radius: 50%;
   background: var(--surface-raised);
   color: var(--text);
   font-size: 15px;
@@ -101,10 +108,33 @@ body {
   background: var(--account-color, var(--accent));
 }
 
+/* Either the account's picture or its initials is present, never both;
+   src/renderer/shell.js hides the other. Both are laid out by the button's
+   grid, and `display: none` keeps the hidden one out of that grid. */
+.account-avatar {
+  display: block;
+  width: 100%;
+  height: 100%;
+  /* Matches the button. The image fills the padding box, so its own radius is
+     what makes a square photo circular. */
+  border-radius: 50%;
+  /* Profile pictures are square, but a file the operator chose need not be.
+     `cover` crops it to the circle instead of squashing the face. */
+  object-fit: cover;
+}
+
+.account-avatar[hidden],
+.account-initials[hidden] {
+  display: none;
+}
+
+/* On a circle the corner of the bounding box is empty, so the badge is pulled
+   in from it: at -5px it would float away from the button instead of notching
+   into its edge. */
 .account-badge {
   position: absolute;
-  top: -5px;
-  right: -5px;
+  top: -2px;
+  right: -2px;
   min-width: 18px;
   height: 18px;
   padding: 0 5px;

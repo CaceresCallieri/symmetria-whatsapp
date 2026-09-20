@@ -21,6 +21,25 @@ function initials(name) {
     .join('')
 }
 
+/**
+ * Shows the account's picture, or its initials when there is no picture.
+ *
+ * Both elements are built once and toggled, rather than one replacing the
+ * other, so a picture that arrives or disappears later never has to rebuild
+ * a button that the active marker and the unread badge are attached to.
+ *
+ * @param {{avatar: HTMLImageElement, initialsText: HTMLElement}} entry
+ * @param {string|null} avatarDataUrl
+ */
+function setAvatar(entry, avatarDataUrl) {
+  const hasAvatar = typeof avatarDataUrl === 'string' && avatarDataUrl !== ''
+  // Assigned before the toggle, so the button never shows an empty frame in
+  // the moment between the initials going and the picture arriving.
+  if (hasAvatar) entry.avatar.src = avatarDataUrl
+  entry.avatar.hidden = !hasAvatar
+  entry.initialsText.hidden = hasAvatar
+}
+
 function buildAccountButton(account, index) {
   const button = document.createElement('button')
   button.type = 'button'
@@ -34,16 +53,33 @@ function buildAccountButton(account, index) {
   // exists to prevent.
   button.title =
     index < maxDigitShortcuts ? `${account.name}  (Ctrl+${index + 1})` : account.name
-  button.append(initials(account.name))
+  // The button's text is the initials, which the picture replaces when there
+  // is one. Without this the accessible name would go with them, leaving a
+  // screen reader to announce an unlabelled button.
+  button.setAttribute('aria-label', account.name)
+
+  // Decorative: the button is already named by aria-label, and an alt text
+  // here would have a screen reader announce the account twice.
+  const avatar = document.createElement('img')
+  avatar.className = 'account-avatar'
+  avatar.alt = ''
+  avatar.hidden = true
+
+  const initialsText = document.createElement('span')
+  initialsText.className = 'account-initials'
+  initialsText.textContent = initials(account.name)
 
   const badge = document.createElement('span')
   badge.className = 'account-badge'
   badge.hidden = true
-  button.append(badge)
 
+  button.append(avatar, initialsText, badge)
   button.addEventListener('click', () => window.symmetria.selectAccount(account.id))
 
-  accountButtonsById.set(account.id, { button, badge })
+  const entry = { button, badge, avatar, initialsText }
+  setAvatar(entry, account.avatarDataUrl)
+
+  accountButtonsById.set(account.id, entry)
   return button
 }
 
