@@ -27,6 +27,7 @@ const channels = {
   NOTIFY: 'symmetria:notify',
   UNREAD_REPORTED: 'symmetria:unread',
   NOTIFICATION_CLOSED_BY_PAGE: 'symmetria:notification-close',
+  ACCOUNT_AVATAR: 'symmetria:account-avatar',
   NOTIFICATION_CLICKED: 'symmetria:notification-click',
 }
 
@@ -50,6 +51,7 @@ if (!accountId) {
     closeNotification: (notificationId) =>
       ipcRenderer.send(channels.NOTIFICATION_CLOSED_BY_PAGE, notificationId),
     reportUnread: (unreadCount) => ipcRenderer.send(channels.UNREAD_REPORTED, unreadCount),
+    reportAccountAvatar: (avatar) => ipcRenderer.send(channels.ACCOUNT_AVATAR, avatar),
     onNotificationClicked: (callback) =>
       ipcRenderer.on(channels.NOTIFICATION_CLICKED, (_event, notificationId) =>
         callback(notificationId)
@@ -83,13 +85,16 @@ const MAIN_WORLD_PATCHES = `(() => {
   // than allowed to replace it.
   const latestNotificationIdByTag = new Map()
 
-  // The avatar WhatsApp passes as options.icon is a blob: URL, which exists
-  // only inside this renderer -- the main process cannot read one. It is
-  // therefore fetched here and handed over as inert bytes in a data URL.
+  // Two pictures travel from this page to the main process: the sender
+  // avatar on a notification, and this account's own profile picture for the
+  // sidebar button. Both are read here and handed over as inert bytes in a
+  // data URL, for the same two reasons.
   //
-  // Fetching in the page is also the safer arrangement. The alternative is to
-  // send the URL and let the main process fetch it, which would let a page
-  // name any address for a privileged process to request.
+  // The notification avatar is a blob: URL, which exists only inside this
+  // renderer -- the main process cannot read one at all. And fetching in the
+  // page is the safer arrangement for both: the alternative is to send a URL
+  // and let the main process fetch it, which would let a page name any
+  // address for a privileged process to request.
   //
   // Both globals are captured now, at document start, because WhatsApp
   // replaces window.fetch with an instrumented version later in its boot.
@@ -99,20 +104,26 @@ const MAIN_WORLD_PATCHES = `(() => {
   const ICON_TIMEOUT_MILLISECONDS = 2000
   const MAX_ICON_BYTES = 512 * 1024
 
-  const readIcon = async (source) => {
-    if (source.startsWith('data:image/')) return source
-
-    const response = await pageFetch(source)
-    const blob = await response.blob()
-    if (!blob.type.startsWith('image/')) return null
-    if (blob.size > MAX_ICON_BYTES) return null
-
-    return await new Promise((resolve, reject) => {
+  const blobToDataUrl = (blob) =>
+    new Promise((resolve, reject) => {
       const reader = new PageFileReader()
       reader.onload = () => resolve(reader.result)
       reader.onerror = () => reject(reader.error)
       reader.readAsDataURL(blob)
     })
+
+  /** Null rather than a throw when the bytes are not an image, or too many. */
+  const imageDataUrlFrom = async (url, maxBytes) => {
+    const response = await pageFetch(url)
+    const blob = await response.blob()
+    if (!blob.type.startsWith('image/')) return null
+    if (blob.size > maxBytes) return null
+    return await blobToDataUrl(blob)
+  }
+
+  const readIcon = async (source) => {
+    if (source.startsWith('data:image/')) return source
+    return await imageDataUrlFrom(source, MAX_ICON_BYTES)
   }
 
   // Never rejects and never hangs. WhatsApp revokes its blob URLs on its own
@@ -257,6 +268,114 @@ const MAIN_WORLD_PATCHES = `(() => {
   } else {
     watchTitle()
   }
+
+  // 4. Report this account's own profile picture, for the sidebar button.
+  //
+  // WhatsApp keeps it in its own IndexedDB: database 'model-storage', object
+  // store 'profile-pic-thumb', keyed by the account's WhatsApp id, with the
+  // picture at a pps.whatsapp.net address in 'previewEurl'. The account's own
+  // id is in localStorage under 'last-wid-md', as '<account>:<device>@c.us'.
+  //
+  // This reads WhatsApp's internal storage schema. That is a deliberate
+  // decision recorded in docs/PRD.md, not an oversight: it is a browser
+  // storage API rather than WhatsApp's markup, so it is not the DOM
+  // dependency this project bans twice over -- but it is still an internal
+  // shape, and the database carries a version number in the thousands
+  // because it migrates. Every step below therefore fails soft. A miss of
+  // any kind costs the sidebar button its picture and leaves the initials,
+  // and must never cost anything else.
+  const PROFILE_DATABASE = 'model-storage'
+  const PROFILE_STORE = 'profile-pic-thumb'
+  const OWN_ID_KEY = 'last-wid-md'
+
+  const MAX_PROFILE_PICTURE_BYTES = 512 * 1024
+  // Two rates, because the two things being waited for are different. Before
+  // a picture has ever been found the wait is for WhatsApp to finish booting,
+  // or for a fresh login to sync, which happens in seconds. After that the
+  // wait is for the user to change their photo, which does not.
+  const PICTURE_POLL_WHILE_MISSING_MILLISECONDS = 15000
+  const PICTURE_POLL_ONCE_FOUND_MILLISECONDS = 5 * 60 * 1000
+
+  const openProfileDatabase = () =>
+    new Promise((resolve, reject) => {
+      const request = indexedDB.open(PROFILE_DATABASE)
+      request.onsuccess = () => resolve(request.result)
+      request.onerror = () => reject(request.error)
+      // Only reached when the database does not exist, which means WhatsApp
+      // has not created it yet. Letting the upgrade run would create an empty
+      // one at a version this code invented, and WhatsApp would then open its
+      // own store against it.
+      request.onupgradeneeded = () => request.transaction.abort()
+    })
+
+  const ownWhatsAppId = () => {
+    const raw = localStorage.getItem(OWN_ID_KEY)
+    if (!raw) return null
+    let wid
+    try {
+      wid = JSON.parse(raw)
+    } catch {
+      return null
+    }
+    if (typeof wid !== 'string') return null
+    // The picture is keyed by the account, so the device suffix comes off.
+    return wid.replace(/:\\d+/, '')
+  }
+
+  const readProfilePictureRecord = async () => {
+    const wid = ownWhatsAppId()
+    if (!wid) return null
+
+    const database = await openProfileDatabase()
+    try {
+      if (!database.objectStoreNames.contains(PROFILE_STORE)) return null
+      return await new Promise((resolve) => {
+        const request = database
+          .transaction(PROFILE_STORE, 'readonly')
+          .objectStore(PROFILE_STORE)
+          .get(wid)
+        request.onsuccess = () => resolve(request.result || null)
+        request.onerror = () => resolve(null)
+      })
+    } finally {
+      database.close()
+    }
+  }
+
+  // The hash of the picture last handed over. WhatsApp changes it when the
+  // user changes their photo, so comparing it means the poll costs one local
+  // read and the picture is fetched only when it is actually new.
+  let lastReportedFilehash = null
+
+  const reportProfilePicture = async () => {
+    const record = await readProfilePictureRecord()
+    // A record with no previewEurl is an account with no photo set. That is
+    // a found answer, not a miss: there is nothing to keep waiting for.
+    if (!record) return false
+    if (typeof record.previewEurl !== 'string') return true
+
+    if (record.filehash && record.filehash === lastReportedFilehash) return true
+
+    const dataUrl = await imageDataUrlFrom(record.previewEurl, MAX_PROFILE_PICTURE_BYTES)
+    if (!dataUrl) return false
+
+    lastReportedFilehash = record.filehash || null
+    bridge.reportAccountAvatar(dataUrl)
+    return true
+  }
+
+  const pollProfilePicture = () => {
+    reportProfilePicture()
+      .catch(() => false)
+      .then((found) => {
+        setTimeout(
+          pollProfilePicture,
+          found ? PICTURE_POLL_ONCE_FOUND_MILLISECONDS : PICTURE_POLL_WHILE_MISSING_MILLISECONDS
+        )
+      })
+  }
+
+  pollProfilePicture()
 })()`
 
 webFrame.executeJavaScript(MAIN_WORLD_PATCHES).catch((error) => {

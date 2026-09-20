@@ -13,7 +13,7 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 
-const { withinPixelCap } = require('../src/main/imageDecoding')
+const { withinPixelCap, isImageDataUrlWithin } = require('../src/main/imageDecoding')
 
 function stubImage(width, height, { empty = false } = {}) {
   return {
@@ -62,4 +62,49 @@ test('caps an image that is over on one side only', () => {
   assert.deepEqual(withinPixelCap(stubImage(400, 10), 256), {
     resizedWith: { width: 256 },
   })
+})
+
+// --- isImageDataUrlWithin -------------------------------------------------
+//
+// The boundary between a page and an image decode in the privileged process.
+// Both callers pass it data that WhatsApp's renderer built: the notification
+// avatar and the account's own profile picture.
+
+test('accepts an image data URL within the cap', () => {
+  assert.equal(isImageDataUrlWithin('data:image/png;base64,iVBORw0KGgo=', 1024), true)
+  assert.equal(isImageDataUrlWithin('data:image/jpeg;base64,/9j/4AAQ', 1024), true)
+})
+
+test('rejects anything the main process would have to go and fetch', () => {
+  // The point of converting in the page is that no page-supplied address
+  // ever reaches the privileged process.
+  for (const source of [
+    'https://pps.whatsapp.net/v/t61/avatar.jpg',
+    'http://127.0.0.1:9222/json/list',
+    'blob:https://web.whatsapp.com/a-uuid',
+    'file:///etc/passwd',
+  ]) {
+    assert.equal(isImageDataUrlWithin(source, 1024), false, `accepted ${source}`)
+  }
+})
+
+test('rejects a data URL that is not an image', () => {
+  assert.equal(isImageDataUrlWithin('data:text/html;base64,PHNjcmlwdD4=', 1024), false)
+  assert.equal(isImageDataUrlWithin('data:application/octet-stream;base64,AAAA', 1024), false)
+  // No media type at all defaults to text/plain, and must not pass on the
+  // strength of the `data:` scheme alone.
+  assert.equal(isImageDataUrlWithin('data:,hello', 1024), false)
+})
+
+test('rejects a data URL past the cap it was given', () => {
+  const long = `data:image/png;base64,${'A'.repeat(1024)}`
+  assert.equal(isImageDataUrlWithin(long, 1024), false)
+  assert.equal(isImageDataUrlWithin(long, 4096), true)
+})
+
+test('rejects a missing or non-string source', () => {
+  // Both callers receive this over IPC, so it can be any JSON value or absent.
+  for (const value of [undefined, null, '', 0, 42, true, {}, [], Buffer.from('x')]) {
+    assert.equal(isImageDataUrlWithin(value, 1024), false, `accepted ${JSON.stringify(value)}`)
+  }
 })

@@ -1,24 +1,32 @@
 // The picture on an account's sidebar button.
 //
-// An account may name an image file in accounts.json:
+// It can come from either of two places, and they are tried in this order:
 //
-//   { "id": "work", "name": "Work", "color": "#53bdeb", "avatar": "~/work.png" }
+//  1. A file the operator names in accounts.json. This is an override, so a
+//     configured picture is never replaced by the one from WhatsApp:
 //
-// The file is read here, decoded, capped, and handed to the shell renderer as
-// a data URL. It is never handed over as a path: the renderer's
-// Content-Security-Policy allows `img-src 'self' data:` and nothing else, so
-// a path would need `file:` opened up for the whole document.
+//       { "id": "work", "name": "Work", "color": "#53bdeb", "avatar": "~/work.png" }
 //
-// Every failure is a warning and a null, never a throw. A missing or
-// unreadable picture must cost the button its photo and leave the account
-// itself working -- the sidebar falls back to the initials, which is also
-// what an account with no `avatar` field gets.
+//  2. The account's own WhatsApp profile picture, which the page reads out of
+//     WhatsApp's IndexedDB and sends here (see section 4 of the main-world
+//     patches in src/preload/account.js). It is cached to disk on arrival so
+//     the next launch can show it immediately, before WhatsApp has booted.
+//
+// Either way the renderer receives the image itself as a data URL, never a
+// path: its Content-Security-Policy allows `img-src 'self' data:` and nothing
+// else, so a path would need `file:` opened up for the whole document.
+//
+// Every failure is a warning and a null, never a throw. A missing, unreadable
+// or undecodable picture must cost the button its photo and leave the account
+// itself working -- the sidebar falls back to the initials, which is also what
+// an account with no picture from either source gets.
 
 const fs = require('node:fs')
 const os = require('node:os')
 const path = require('node:path')
 
-const { withinPixelCap } = require('./imageDecoding')
+const channels = require('../shared/channels')
+const { withinPixelCap, isImageDataUrlWithin } = require('./imageDecoding')
 
 // The sidebar button is 42 CSS pixels wide. 96 covers a 2x display with room
 // to spare, and keeps the encoded result small enough to travel inside the
@@ -28,6 +36,17 @@ const MAX_AVATAR_PIXELS = 96
 // A guard against handing a very large file to the image decoder, not a
 // judgement about the photo -- anything past this is not a profile picture.
 const MAX_AVATAR_FILE_BYTES = 8 * 1024 * 1024
+
+// The cap for a picture arriving over IPC is far tighter than the one for a
+// file on disk, because the two are not the same kind of input. A file is
+// named by the operator; this is built by WhatsApp's renderer. Base64 inflates
+// by about a third, so this admits roughly 384 KiB of image -- the thumbnail
+// WhatsApp stores is a couple of kilobytes.
+const MAX_AVATAR_DATA_URL_LENGTH = 512 * 1024
+
+// Where a picture reported by the page is kept, so the button is not blank
+// for the seconds it takes WhatsApp to boot on the next launch.
+const AVATAR_CACHE_DIRECTORY = 'avatars'
 
 /**
  * Absolute form of a path written by hand in accounts.json.
@@ -107,8 +126,117 @@ function avatarDataUrlFrom(configuredPath, accountId) {
 }
 
 /**
- * The account list as the shell renderer needs it: the configured `avatar`
- * path replaced by the picture itself.
+ * Where the picture reported by an account's page is kept between launches.
+ *
+ * `accountId` is safe in a filename without escaping: src/main/accounts.js
+ * refuses any id outside `[A-Za-z0-9_-]`, which is the same rule that stops
+ * an id from escaping the session partitions directory.
+ *
+ * @param {string} accountId
+ */
+function avatarCachePath(accountId) {
+  const { app } = require('electron')
+  return path.join(app.getPath('userData'), AVATAR_CACHE_DIRECTORY, `${accountId}.png`)
+}
+
+/**
+ * Stores a picture reported by the page, as PNG.
+ *
+ * A failure here is not worth interrupting anything for: the picture is
+ * already on its way to the sidebar, and all that is lost is the head start
+ * on the next launch.
+ *
+ * @param {string} accountId
+ * @param {Electron.NativeImage} image
+ */
+function cacheAvatar(accountId, image) {
+  const filePath = avatarCachePath(accountId)
+  try {
+    fs.mkdirSync(path.dirname(filePath), { recursive: true })
+    fs.writeFileSync(filePath, image.toPNG())
+  } catch (error) {
+    console.warn(`[avatars] ${accountId}: cannot cache the picture: ${error.message}`)
+  }
+}
+
+/**
+ * The cached picture for an account, or null when there is not one yet.
+ *
+ * A missing file is the ordinary case on a first run, so unlike a configured
+ * path this says nothing when it finds nothing.
+ *
+ * @param {string} accountId
+ */
+function cachedAvatarDataUrl(accountId) {
+  let filePath
+  try {
+    filePath = avatarCachePath(accountId)
+  } catch {
+    // app.getPath throws before Electron is ready. Nothing asks for an avatar
+    // that early, but a cache miss is the right answer if anything ever does.
+    return null
+  }
+  if (!fs.existsSync(filePath)) return null
+  return avatarDataUrlFrom(filePath, accountId)
+}
+
+/**
+ * Turns a picture reported by an account's page into an image, or nothing.
+ *
+ * This is page-controlled data, so it gets the same treatment as a
+ * notification avatar: an inert image data URL under a size cap, never an
+ * address the main process would go and fetch.
+ *
+ * @param {unknown} source
+ * @returns {Electron.NativeImage|null}
+ */
+function reportedAvatarImageFrom(source) {
+  if (!isImageDataUrlWithin(source, MAX_AVATAR_DATA_URL_LENGTH)) return null
+
+  const { nativeImage } = require('electron')
+  try {
+    return withinPixelCap(nativeImage.createFromDataURL(source), MAX_AVATAR_PIXELS)
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Receives the profile picture an account's page reports.
+ *
+ * @param {object} deps
+ * @param {(webContents: Electron.WebContents) => string|null} deps.accountIdFor
+ * @param {(accountId: string) => string} deps.configuredAvatarFor
+ * @param {(accountId: string, avatarDataUrl: string) => void} deps.onAvatarChanged
+ */
+function registerAccountAvatarBridge({ accountIdFor, configuredAvatarFor, onAvatarChanged }) {
+  const { ipcMain } = require('electron')
+
+  ipcMain.on(channels.ACCOUNT_AVATAR, (event, source) => {
+    // Derived from the sender, never taken from the message. A renderer could
+    // otherwise put its picture on another account's button.
+    const accountId = accountIdFor(event.sender)
+    if (!accountId) return
+
+    // A configured picture is an override, so the one from WhatsApp is not
+    // cached either. Caching it would make removing the override change the
+    // button to a photo the operator never chose.
+    if (configuredAvatarFor(accountId)) return
+
+    const image = reportedAvatarImageFrom(source)
+    if (!image) {
+      console.warn(`[avatars] ${accountId}: the page reported something that is not a picture`)
+      return
+    }
+
+    cacheAvatar(accountId, image)
+    onAvatarChanged(accountId, image.toDataURL())
+  })
+}
+
+/**
+ * The account list as the shell renderer needs it, with each account's
+ * picture resolved to the image itself.
  *
  * The field is renamed on the way through. `avatar` is a path on disk and
  * `avatarDataUrl` is an image, and letting one name mean both is how a path
@@ -116,21 +244,26 @@ function avatarDataUrlFrom(configuredPath, accountId) {
  *
  * Read on every call rather than cached. The shell renderer asks once, when
  * it starts, so a cache would save nothing and would instead hold a stale
- * picture after the operator replaces the file.
+ * picture after the file behind it changed.
  *
  * @param {Array<{id: string, name: string, color: string, avatar?: string}>} accounts
  */
 function accountsWithAvatars(accounts) {
   return accounts.map(({ avatar, ...account }) => ({
     ...account,
-    avatarDataUrl: avatarDataUrlFrom(avatar, account.id),
+    // The configured file wins. The cache is only consulted when there is no
+    // override, and holds whatever the page last reported.
+    avatarDataUrl: avatarDataUrlFrom(avatar, account.id) || cachedAvatarDataUrl(account.id),
   }))
 }
 
 module.exports = {
   accountsWithAvatars,
+  registerAccountAvatarBridge,
   avatarDataUrlFrom,
+  reportedAvatarImageFrom,
   resolveAvatarPath,
   MAX_AVATAR_PIXELS,
   MAX_AVATAR_FILE_BYTES,
+  MAX_AVATAR_DATA_URL_LENGTH,
 }

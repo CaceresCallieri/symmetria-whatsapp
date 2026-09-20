@@ -16,6 +16,7 @@ const channels = {
   SELECT_ACCOUNT: 'symmetria:select-account',
   ACTIVE_ACCOUNT: 'symmetria:active-account',
   UNREAD_CHANGED: 'symmetria:unread-changed',
+  ACCOUNT_AVATAR_CHANGED: 'symmetria:account-avatar-changed',
   DOWNLOAD: 'symmetria:download',
 }
 
@@ -34,4 +35,9 @@ contextBridge.exposeInMainWorld('symmetria', {
 
   onDownload: (callback) =>
     ipcRenderer.on(channels.DOWNLOAD, (_event, download) => callback(download)),
+
+  onAccountAvatar: (callback) =>
+    ipcRenderer.on(channels.ACCOUNT_AVATAR_CHANGED, (_event, accountId, avatarDataUrl) =>
+      callback(accountId, avatarDataUrl)
+    ),
 })

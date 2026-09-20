@@ -66,11 +66,24 @@ async function listTargets(port) {
  * usual cause is the app not running, and the second most usual is it running
  * without --remote-debugging-port, which look identical without it.
  */
-async function findWhatsAppPage(port) {
-  const targets = await listTargets(port)
-  const target = targets.find(
+/**
+ * Every WhatsApp account view.
+ *
+ * The `type === 'page'` filter is what makes this correct rather than nearly
+ * correct: WhatsApp's service worker is registered at a web.whatsapp.com URL
+ * too, and it answers neither Page nor Runtime evaluation.
+ *
+ * @param {Array<{type: string, url: string}>} targets
+ */
+function whatsAppPages(targets) {
+  return targets.filter(
     (candidate) => candidate.type === 'page' && candidate.url.startsWith('https://web.whatsapp.com')
   )
+}
+
+async function findWhatsAppPage(port) {
+  const targets = await listTargets(port)
+  const target = whatsAppPages(targets)[0]
   if (!target) {
     throw new Error(
       `no web.whatsapp.com page on port ${port}. Targets: ` +
@@ -101,4 +114,4 @@ async function evaluateJson(client, expression) {
   return JSON.parse(result.result.value)
 }
 
-module.exports = { connect, listTargets, findWhatsAppPage, wait, evaluateJson }
+module.exports = { connect, listTargets, findWhatsAppPage, whatsAppPages, wait, evaluateJson }

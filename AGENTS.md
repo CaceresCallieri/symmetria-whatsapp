@@ -78,11 +78,18 @@ npm start -- --remote-debugging-port=9222
 # shell 2
 npm run verify:keyboard        # exits non-zero if any check fails
 npm run verify:notifications   # the notification path, avatar included
+npm run verify:avatars         # the account picture, IndexedDB to sidebar
 ```
 
 `verify:notifications` reads the evidence off the session bus, so it needs a
 notification daemon running. It fails with that reason rather than a wrong
 answer when there is none.
+
+**Run `verify:avatars` last, and restart the app before running anything after
+it.** It reloads each account page over the DevTools protocol, and the
+Surfingkeys UI frame does not come back from a reload driven that way --
+`verify:keyboard` then reports its two frame checks as failures that have
+nothing to do with the app.
 
 Stop the app when you are done. The app needs a display: on a headless machine
 run it under `Xvfb` (`xvfb-run -a --server-args='-screen 0 1400x900x24' npm

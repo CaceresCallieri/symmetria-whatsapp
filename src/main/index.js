@@ -15,7 +15,7 @@ const { app, BrowserWindow, ipcMain, nativeTheme } = require('electron')
 
 const channels = require('../shared/channels')
 const { loadAccounts } = require('./accounts')
-const { accountsWithAvatars } = require('./accountAvatars')
+const { accountsWithAvatars, registerAccountAvatarBridge } = require('./accountAvatars')
 const { AccountViews } = require('./accountViews')
 const { registerNotificationBridge } = require('./notifications')
 const { bindAccountShortcuts, MAX_DIGIT_SHORTCUTS } = require('./shortcuts')
@@ -176,6 +176,14 @@ app.whenReady().then(async () => {
     accountNameFor: (accountId) => accounts[accountIndexOf(accountId)]?.name || '',
     onUnreadChange: (accountId, unreadCount) => {
       sendToShell(channels.UNREAD_CHANGED, accountId, unreadCount)
+    },
+  })
+
+  registerAccountAvatarBridge({
+    accountIdFor: (webContents) => accountViews?.accountIdFor(webContents) ?? null,
+    configuredAvatarFor: (accountId) => accounts[accountIndexOf(accountId)]?.avatar || '',
+    onAvatarChanged: (accountId, avatarDataUrl) => {
+      sendToShell(channels.ACCOUNT_AVATAR_CHANGED, accountId, avatarDataUrl)
     },
   })
 

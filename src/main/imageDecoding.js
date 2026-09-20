@@ -15,6 +15,27 @@
 // Electron is an Arch system package rather than a node_modules dependency,
 // so `node --test` has no Electron runtime to create one with.
 
+const IMAGE_DATA_URL_PREFIX = 'data:image/'
+
+/**
+ * Whether `source` is something the main process is willing to decode.
+ *
+ * Pure, and the entire boundary between a page and an image decode in the
+ * privileged process. Both callers pass data that WhatsApp's renderer built,
+ * so both need the same two guarantees: the bytes are inert and already here,
+ * never an address the main process would go and fetch, and there are not too
+ * many of them.
+ *
+ * @param {unknown} source
+ * @param {number} maxLength  cap on the data URL's length, in characters
+ * @returns {boolean}
+ */
+function isImageDataUrlWithin(source, maxLength) {
+  if (typeof source !== 'string') return false
+  if (!source.startsWith(IMAGE_DATA_URL_PREFIX)) return false
+  return source.length <= maxLength
+}
+
 /**
  * The image, resized so its longer side is at most `maxPixels`, or null when
  * there is no usable image at all.
@@ -37,4 +58,4 @@ function withinPixelCap(image, maxPixels) {
   return image.resize(width >= height ? { width: maxPixels } : { height: maxPixels })
 }
 
-module.exports = { withinPixelCap }
+module.exports = { withinPixelCap, isImageDataUrlWithin }

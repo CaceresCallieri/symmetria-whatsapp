@@ -74,7 +74,7 @@ src/
 │   ├── extensionFramePolicy.js  CSP and cross-origin-isolation relaxations for the extension frame
 │   ├── notifications.js      web notifications to the desktop daemon
 │   ├── notificationIcon.js   the page-supplied sender avatar, as a NativeImage
-│   ├── accountAvatars.js     the operator-supplied account picture, as a data URL
+│   ├── accountAvatars.js     the account's sidebar picture: source, cache and IPC
 │   ├── imageDecoding.js      the pixel cap both image decoders share
 │   ├── shortcuts.js          account-switching keys
 │   └── layout.js             window geometry, shared with the renderer
@@ -126,6 +126,26 @@ channels and the window-control buttons, which had no other caller.
   replaces `window.Notification` and `navigator.storage`, which are contracts
   with the browser. It reads no WhatsApp markup. That distinction is what
   separates the current approach from the one pivot 1 abandoned.
+- **An account's own profile picture is read from WhatsApp's IndexedDB, never
+  from its markup.** Decided by the operator, because it is the one place this
+  project accepts a dependency on a WhatsApp internal. The alternatives were
+  worse: a DOM selector is banned outright, and WhatsApp's internal webpack
+  modules are renamed far more often than its storage is migrated. The shape,
+  confirmed against a logged-in profile:
+
+  | Where | What |
+  |---|---|
+  | `localStorage['last-wid-md']` | the account's own id, JSON-quoted, as `<account>:<device>@c.us` |
+  | database `model-storage` | version 2040 at the time of writing, so it does migrate |
+  | object store `profile-pic-thumb` | keyed by `<account>@c.us`, without the device suffix |
+  | field `previewEurl` | a `pps.whatsapp.net` address the page can fetch; about 2 KB of JPEG |
+  | field `filehash` | changes when the user changes their photo, so the poll costs one local read and fetches only on a change |
+
+  The cost is bounded by design. Every step fails soft, and a miss anywhere
+  costs the sidebar button its picture and nothing else -- it falls back to
+  the account's initials, which is also what a correct app shows for an
+  account with no photo. `npm run verify:avatars` is what makes that failure
+  visible instead of silent.
 
 ### Workarounds that the platform forces
 
@@ -184,7 +204,7 @@ follow to the others.
 |----|-------------|--------|
 | P1-1 | Native notifications forwarded to the Symmetria Shell notification center | Done, default click action only |
 | P1-2 | Symmetria styling: frameless, undecorated, translucent sidebar | Done |
-| P1-8 | Round account buttons showing a picture instead of initials | Partly — the shape is done, and an account shows the image named by `avatar` in `accounts.json`. The picture is not taken from WhatsApp automatically; see the open question below |
+| P1-8 | Round account buttons showing each account's profile picture | Done — read from WhatsApp's IndexedDB and cached to disk, with an `avatar` path in `accounts.json` as an override. Verified by `npm run verify:avatars` |
 | P1-3 | Account management: add, remove, rename, reorder | Not started — edit `accounts.json` by hand |
 | P1-4 | Quick account switcher: `Ctrl+1`..`Ctrl+9`, `Ctrl+Tab` | Done |
 | P1-5 | Download handling with a configurable save path | Partly — saves to the XDG download directory with collision-safe names, not configurable |
@@ -236,34 +256,6 @@ sender's avatar and the app now forwards it. Whether a photo message puts the
 photo there instead, or just falls back to the avatar with a "📷 Photo" body,
 has never been observed -- the spike and every verification run since have only
 ever reached the login page. One real message answers it.
-
-**Where does an account's own profile picture come from?** The sidebar button
-is round and shows a picture, but only the one an operator names in the
-`avatar` field of `accounts.json`. Taking it from WhatsApp automatically has
-three candidate routes and each one costs something:
-
-1. **Read `model-storage` in IndexedDB.** Confirmed present in a logged-in
-   partition -- database `model-storage`, version 203, holding `profile-pic`
-   records with `eurl` fields. This is a browser storage API rather than
-   WhatsApp's markup, so it does not hit the DOM-structure prohibition by the
-   letter. It does depend on WhatsApp's internal schema, which is the same
-   family of dependency the project abandoned twice, and the schema version
-   number says out loud that it migrates.
-2. **Call WhatsApp's internal modules** (`WAWebCollections.ProfilePicThumb`).
-   Strictly more fragile: module names change whenever the webpack bundle is
-   refactored, and reaching them at all now needs chunk injection.
-3. **Read the DOM** (`#side header img`). Forbidden outright -- this is a
-   selector on WhatsApp's markup.
-
-ZapZap, the comparable open-source Qt wrapper, solves this by not solving it:
-it generates a random coloured icon per account and never shows the real
-photo. That is the honest measure of how much the automatic route costs.
-
-Route 1 is the only one worth considering, and it is a decision for the
-operator rather than for an agent: the fallback is benign (the button shows
-initials) but the prohibition exists precisely because "benign fallback" was
-the argument last time too. Until it is decided, the `avatar` field is the
-whole feature.
 
 **Notification actions.** Electron's `Notification` exposes no actions on Linux,
 so replying from a notification needs `org.freedesktop.Notifications` spoken

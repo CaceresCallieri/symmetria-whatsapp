@@ -15,12 +15,14 @@ module.exports = {
   NOTIFY: 'symmetria:notify',
   UNREAD_REPORTED: 'symmetria:unread',
   NOTIFICATION_CLOSED_BY_PAGE: 'symmetria:notification-close',
+  ACCOUNT_AVATAR: 'symmetria:account-avatar',
 
   // main -> page
   NOTIFICATION_CLICKED: 'symmetria:notification-click',
 
   // main -> shell renderer
   UNREAD_CHANGED: 'symmetria:unread-changed',
+  ACCOUNT_AVATAR_CHANGED: 'symmetria:account-avatar-changed',
   ACTIVE_ACCOUNT: 'symmetria:active-account',
   DOWNLOAD: 'symmetria:download',
 

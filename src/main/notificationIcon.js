@@ -18,9 +18,7 @@
 // keeps the acceptance rules in the same file as the code they guard, so a
 // reader judging what the main process will accept has it all in one place.
 
-const { withinPixelCap } = require('./imageDecoding')
-
-const ICON_DATA_URL_PREFIX = 'data:image/'
+const { withinPixelCap, isImageDataUrlWithin } = require('./imageDecoding')
 
 // Base64 inflates by about a third, so this admits roughly 512 KiB of image.
 // A notification avatar is a thumbnail; anything larger is not one.
@@ -43,9 +41,7 @@ const MAX_ICON_PIXELS = 256
  * @returns {boolean}
  */
 function isAcceptableIconDataUrl(source) {
-  if (typeof source !== 'string') return false
-  if (!source.startsWith(ICON_DATA_URL_PREFIX)) return false
-  return source.length <= MAX_ICON_DATA_URL_LENGTH
+  return isImageDataUrlWithin(source, MAX_ICON_DATA_URL_LENGTH)
 }
 
 /**

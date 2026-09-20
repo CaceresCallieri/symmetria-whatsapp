@@ -133,6 +133,12 @@ async function start() {
 
   window.symmetria.onActiveAccount(setActiveAccount)
   window.symmetria.onUnread(setUnread)
+  // Arrives once the account's WhatsApp has booted far enough to know its own
+  // profile picture, which is after this sidebar is already on screen.
+  window.symmetria.onAccountAvatar((accountId, avatarDataUrl) => {
+    const entry = accountButtonsById.get(accountId)
+    if (entry) setAvatar(entry, avatarDataUrl)
+  })
   window.symmetria.onDownload((event) => {
     // The same channel carries account status messages (a failed load, a
     // crashing view), which have no filename.

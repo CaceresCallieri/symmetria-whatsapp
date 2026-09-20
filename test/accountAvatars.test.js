@@ -18,8 +18,10 @@ const path = require('node:path')
 
 const {
   avatarDataUrlFrom,
+  reportedAvatarImageFrom,
   resolveAvatarPath,
   MAX_AVATAR_FILE_BYTES,
+  MAX_AVATAR_DATA_URL_LENGTH,
 } = require('../src/main/accountAvatars')
 
 /** Runs `body` with console.warn captured, and returns what it wrote. */
@@ -107,4 +109,36 @@ test('warns and falls back when the file is past the size limit', (t) => {
   })
   assert.equal(warnings.length, 1)
   assert.match(warnings[0], /past the/)
+})
+
+// --- reportedAvatarImageFrom ----------------------------------------------
+//
+// The picture an account's page reports over IPC. Only the rejections are
+// covered: anything this accepts goes on to build a NativeImage, and
+// `node --test` has no Electron runtime to build one in.
+
+test('refuses a reported picture that is not an inert image data URL', () => {
+  for (const source of [
+    // The page must convert the picture itself. A URL here would be an
+    // address a renderer chose for the privileged process to fetch.
+    'https://pps.whatsapp.net/v/t61/avatar.jpg',
+    'blob:https://web.whatsapp.com/a-uuid',
+    'file:///etc/shadow',
+    'data:text/html;base64,PHNjcmlwdD4=',
+    'data:,hello',
+    undefined,
+    null,
+    '',
+    42,
+    {},
+  ]) {
+    assert.equal(reportedAvatarImageFrom(source), null, `accepted ${JSON.stringify(source)}`)
+  }
+})
+
+test('refuses a reported picture past the size cap', () => {
+  // Far tighter than the cap on a file the operator named: this one is built
+  // by WhatsApp's renderer, and the thumbnail it stores is a few kilobytes.
+  const oversized = `data:image/png;base64,${'A'.repeat(MAX_AVATAR_DATA_URL_LENGTH)}`
+  assert.equal(reportedAvatarImageFrom(oversized), null)
 })
