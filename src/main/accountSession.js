@@ -6,10 +6,9 @@
 // far less ceremony -- a persistent partition is persistent from the start,
 // with no off-the-record phase to work around.
 
-const fs = require('node:fs')
-const path = require('node:path')
-const { app, session } = require('electron')
+const { session } = require('electron')
 
+const { attachDownloadHandler } = require('./downloads')
 const { allowExtensionFramesInSession } = require('./extensionFramePolicy')
 
 const WHATSAPP_ORIGIN = 'https://web.whatsapp.com'
@@ -107,59 +106,6 @@ function createAccountSession(accountId, { onDownload } = {}) {
   if (onDownload) attachDownloadHandler(accountSession, accountId, onDownload)
 
   return accountSession
-}
-
-/**
- * Picks a path inside `directory` that no file occupies yet, appending
- * ` (1)`, ` (2)` and so on before the extension.
- *
- * Without this, a second `image.jpg` silently destroys the first -- and
- * WhatsApp names attachments predictably enough that this is the common case,
- * not the rare one.
- */
-function uniqueSavePath(directory, filename) {
-  const extension = path.extname(filename)
-  const stem = path.basename(filename, extension)
-
-  let candidate = path.join(directory, filename)
-  for (let counter = 1; fs.existsSync(candidate); counter += 1) {
-    candidate = path.join(directory, `${stem} (${counter})${extension}`)
-  }
-  return candidate
-}
-
-// Saves attachments straight to the XDG download directory instead of raising a
-// file dialog for every image. A dialog per download is the wrong default for a
-// chat client, where saving a photo should cost one keystroke.
-function attachDownloadHandler(accountSession, accountId, onDownload) {
-  const downloadsDirectory = app.getPath('downloads')
-
-  accountSession.on('will-download', (_event, item) => {
-    // The filename is remote-controlled through Content-Disposition, so it is
-    // reduced to a bare basename before it can contribute a `../` segment to
-    // the joined path.
-    const safeName = path.basename(item.getFilename()) || 'download'
-    const savePath = uniqueSavePath(downloadsDirectory, safeName)
-
-    // Belt and braces: confirm the resolved path really is inside the
-    // downloads directory before handing it to Chromium.
-    if (!path.resolve(savePath).startsWith(path.resolve(downloadsDirectory) + path.sep)) {
-      console.error(`[downloads] refused a path outside the downloads directory: ${savePath}`)
-      item.cancel()
-      return
-    }
-
-    item.setSavePath(savePath)
-
-    item.once('done', (_doneEvent, state) => {
-      onDownload({
-        accountId,
-        filename: path.basename(savePath),
-        savePath,
-        state, // 'completed' | 'cancelled' | 'interrupted'
-      })
-    })
-  })
 }
 
 module.exports = {

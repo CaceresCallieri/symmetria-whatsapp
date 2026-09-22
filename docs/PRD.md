@@ -69,9 +69,10 @@ src/
 ├── main/                     Electron main process
 │   ├── index.js              entry, window, IPC, account activation
 │   ├── accounts.js           account list persistence
-│   ├── accountSession.js     per-account session: partition, UA, permissions, downloads
+│   ├── accountSession.js     per-account session: partition, UA, permissions
 │   ├── accountViews.js       one WebContentsView per account, show/hide, layout
 │   ├── extensions.js         Surfingkeys loading per session
+│   ├── downloads.js          the save dialog, and announcing what it saved
 │   ├── externalLinks.js      scheme filter for page-supplied URLs
 │   ├── extensionFramePolicy.js  CSP and cross-origin-isolation relaxations for the extension frame
 │   ├── notifications.js      web notifications to the desktop daemon
@@ -161,6 +162,7 @@ because a future agent will otherwise try to remove them.
 | Cross-origin isolation opt-in written onto extension frame responses | WhatsApp sends `Cross-Origin-Embedder-Policy: require-corp`, which refuses any embedded document that does not opt in. Lifting the CSP alone is not enough. WhatsApp's own isolation is untouched — the page still reports `crossOriginIsolated` and keeps `SharedArrayBuffer` | `extensionFramePolicy.js` |
 | `navigator.storage.persist` forced to resolve true | Chromium denies persistence without a user-engagement signal a wrapper never collects | `preload/account.js` |
 | `window.Notification` replaced | Chromium would show notifications itself, losing the account name and giving the click nowhere to go | `preload/account.js` |
+| `will-download` deliberately never calls `item.setSavePath()` | Leaving the path unset is the only way to make Electron raise a save dialog, and the dialog is what reaches the XDG portal. Setting the path is not a missing line, it is the rejected behaviour | `main/downloads.js` |
 | The sender avatar is read into a data URL inside the page | WhatsApp passes it as a `blob:` URL, which exists only in that renderer. Sending the URL for the main process to fetch instead would let a page name an address for a privileged process to request | `preload/account.js`, `main/notificationIcon.js` |
 
 ### Known limits of the rented keyboard layer
@@ -208,7 +210,7 @@ follow to the others.
 | P1-2 | Symmetria styling: frameless, undecorated, translucent sidebar | Done |
 | P1-3 | Account management: add, remove, rename, reorder | Not started — edit `accounts.json` by hand |
 | P1-4 | Quick account switcher: `Ctrl+1`..`Ctrl+9`, `Ctrl+Tab` | Done |
-| P1-5 | Download handling with a configurable save path | Partly — saves to the XDG download directory with collision-safe names, not configurable |
+| P1-5 | Download handling with a configurable save path | Done — every download asks, through the XDG desktop portal, so the save dialog is the desktop's own file chooser. The suggested name is collision-safe. A finished download raises a desktop notification whose click reveals the file. No stored setting, and none is wanted: the dialog is the configuration |
 | P1-6 | System tray with per-account unread counts, minimize to tray | Not started |
 | P1-7 | Per-account zoom with persistence | Not started |
 | P1-8 | Round account buttons showing each account's profile picture | Done — read from WhatsApp's IndexedDB and cached to disk, with an `avatar` path in `accounts.json` as an override. Verified by `npm run verify:avatars` |

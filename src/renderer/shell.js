@@ -153,14 +153,12 @@ async function start() {
     const entry = accountButtonsById.get(accountId)
     if (entry) setAvatar(entry, avatarDataUrl)
   })
-  window.symmetria.onDownload((event) => {
-    // The same channel carries account status messages (a failed load, a
-    // crashing view), which have no filename.
-    if (event.state === 'status') return showToast(event.message)
-    showToast(
-      event.state === 'completed' ? `Saved ${event.filename}` : `Download failed: ${event.filename}`
-    )
-  })
+  // Both kinds of event on this channel -- a finished download and an account
+  // status message (a failed load, a crashing view) -- arrive with their
+  // wording already chosen by the main process. This used to re-derive the
+  // download wording from `event.state` here, which left no branch for a
+  // cancelled download and reported it as a failure.
+  window.symmetria.onDownload((event) => showToast(event.message))
 }
 
 start().catch((error) => {
