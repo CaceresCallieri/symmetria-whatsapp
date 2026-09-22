@@ -11,7 +11,7 @@ After editing application source (main process, preload, renderer), there is not
 **How to apply:**
 - Application code: no build. Just relaunch.
 - `vendor/surfingkeys` is the one exception. Run `npm run build:extension` yourself when `test -d vendor/surfingkeys` fails, or when `DEFAULT_REF` in `scripts/build-surfingkeys.js` changed. Do not hand that to the user.
-- Two paths fail silently and each has its own check: `npm run verify:keyboard` for the keyboard layer, `npm run verify:avatars` for the account picture. `AGENTS.md` §"Before you change the platform" lists which files trigger which, and holds the exact two-shell procedure. All of them need the app already running with `--remote-debugging-port=9222`; without it they exit with a connection error that reads like a broken script.
+- Two paths fail silently, and the mapping from files to checks is in `AGENTS.md` §"Before you change the platform" — read it there rather than inferring it from this note. The keyboard layer needs `npm run verify:keyboard`. The account picture needs `npm run verify:avatars`, and also `npm run verify:notifications` when the change touched `accountAvatars.js`, `imageDecoding.js` or `notificationIcon.js`, because the notification avatar shares those modules. All three need the app already running with `--remote-debugging-port=9222`; without it they exit with a connection error that reads like a broken script.
 - `npm test` needs nothing running.
 
 Related: [[project_frontend_pivot]], [[project_overview]].

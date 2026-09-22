@@ -10,14 +10,20 @@ correct the other file rather than acting on it.
 
 ## Branch model
 
-`main` is the Electron application and the only long-lived branch. Work happens
-on short-lived branches off it.
+`main` is the Electron application. Branch off it for a piece of work, then
+fast-forward `main` when that work lands.
 
-The Qt6/QML implementation this replaced was retired, not deleted. It is the
-history behind `main` up to the tag `qt6-final`, and the abandoned native-Qt
-experiment is at `native-qt-experiment`. Both are there to be read, never to be
-built on — `docs/PRD.md` §"Project status and direction" records what each one
-was and why it was replaced.
+`main` replaced the Qt6/QML implementation. That implementation was retired
+rather than deleted: it is the history behind `main`, at the tag `qt6-final`,
+and the abandoned native-Qt experiment is at `native-qt-experiment`. Read
+either for context, build on neither — `docs/PRD.md` §"Project status and
+direction" records what each one was and why it was replaced.
+
+**Never delete those two tags, and never rewrite `main`'s history.** The
+branches that used to hold both implementations are gone, so
+`native-qt-experiment` is the only ref that still reaches its commits at all —
+deleting it orphans them, and the next garbage collection ends them. If a task
+seems to need either, stop and ask.
 
 ## Stack
 

@@ -1,6 +1,6 @@
 # Feature: Play Voice Notes from the Notification Without Stealing Focus
 
-## Status: Researched, and blocked twice over
+## Status: Researched — blocked twice over
 
 This was researched against the Qt implementation. The Qt plumbing it proposed
 is gone; what survives is the research, which is about the Web Notifications
@@ -75,7 +75,8 @@ next step, and it is cheap.
 
 ## References
 
-- Notification signal path in this app: `src/preload/account.js` §1 replaces
+- Notification signal path in this app: the "1. Route notifications through the
+  main process" comment block in `src/preload/account.js` replaces
   `window.Notification`; `src/main/notifications.js` forwards it and routes the
   click back to the page.
 - `docs/PRD.md` §"Requirements" P2-1 for the D-Bus prerequisite.

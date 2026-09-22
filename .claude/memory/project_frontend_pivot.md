@@ -16,10 +16,10 @@ The project has pivoted twice on the same question: how to get vim-style keyboar
 **Why Electron specifically:** Qt WebEngine exposes no extension API at all — only user scripts, which is the raw-injection route pivot 1 abandoned. That single fact drove the re-platform. Nothing else about the two stacks mattered enough.
 
 **How to apply:**
-- **Never re-add DOM injection for navigation.** This project has paid for crossing that line twice. The exact boundary, and the three things that are exempt, are in `CLAUDE.md` §Key decisions — read it there rather than guessing from this summary.
+- **Never re-add DOM injection for navigation.** This project has paid for crossing that line twice. The exact boundary, and the three things that are exempt, are in `AGENTS.md` §"Key decisions" — read it there rather than guessing from this summary.
 - **Never reimplement the WhatsApp protocol.** whatsapp-web.js, Matrix bridges and Baileys were all evaluated and all rejected. The wrapper approach is what makes the ban risk zero and it has survived every pivot.
 - **Rent, do not build, the keyboard layer.** Two attempts to own it failed or stalled.
 - **Branch model:** `main` is the Electron application. The Qt implementation is retired at the tag `qt6-final` and the abandoned native-Qt experiment at `native-qt-experiment` — both readable, neither to be built on.
-- Upgrading Electron, Surfingkeys or `electron-chrome-extensions` breaks the keyboard layer *silently*. Always run `npm run verify:keyboard` afterwards — it needs the app already running with `--remote-debugging-port=9222`, per `CLAUDE.md` §"Before you change the platform".
+- Upgrading Electron, Surfingkeys or `electron-chrome-extensions` breaks the keyboard layer *silently*. Always run `npm run verify:keyboard` afterwards — it needs the app already running with `--remote-debugging-port=9222`, per `AGENTS.md` §"Before you change the platform".
 
 Related: [[project_overview]], [[feedback_auto_rebuild]].
