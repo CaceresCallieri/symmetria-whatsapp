@@ -158,7 +158,12 @@ async function start() {
   // wording already chosen by the main process. This used to re-derive the
   // download wording from `event.state` here, which left no branch for a
   // cancelled download and reported it as a failure.
-  window.symmetria.onDownload((event) => showToast(event.message))
+  // The guard is not decoration: a future producer on this channel that
+  // forgot `message` would otherwise show a toast reading `undefined`, and
+  // nothing else in the app would notice.
+  window.symmetria.onDownload((event) => {
+    if (event?.message) showToast(event.message)
+  })
 }
 
 start().catch((error) => {

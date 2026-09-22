@@ -71,8 +71,8 @@ src/
 │   ├── accounts.js           account list persistence
 │   ├── accountSession.js     per-account session: partition, UA, permissions
 │   ├── accountViews.js       one WebContentsView per account, show/hide, layout
-│   ├── extensions.js         Surfingkeys loading per session
 │   ├── downloads.js          the save dialog, and announcing what it saved
+│   ├── extensions.js         Surfingkeys loading per session
 │   ├── externalLinks.js      scheme filter for page-supplied URLs
 │   ├── extensionFramePolicy.js  CSP and cross-origin-isolation relaxations for the extension frame
 │   ├── notifications.js      web notifications to the desktop daemon

@@ -1,11 +1,14 @@
-// Guards the two download rules that fail silently.
+// Guards the download rules that fail silently.
 //
-// Both are invisible when wrong. A bad `downloadOutcome` branch still saves
-// the file correctly and merely says the wrong thing about it -- which is how
-// the previous version came to report a cancelled download as a failure, with
-// nothing in the app or the logs to show for it. A broken `uniqueSavePath`
-// is worse than silent: it suggests a name that overwrites a file you already
-// had, and the dialog's quickest answer accepts the suggestion.
+// All of them are invisible when wrong. A bad `downloadOutcome` branch still
+// saves the file correctly and merely says the wrong thing about it -- which
+// is how the previous version came to report a cancelled download as a
+// failure, with nothing in the app or the logs to show for it. A broken
+// `uniqueSavePath` is worse than silent: it suggests a name that overwrites a
+// file you already had, and the dialog's quickest answer accepts the
+// suggestion. `sanitisedFilename` is the one with an attacker on the other
+// side of it -- the name is the sender's, and these cases are the ones
+// `path.basename` alone lets through.
 //
 // Only the pure rules are covered. Raising the dialog and the notification
 // needs a real Electron runtime, which `node --test` is not.
@@ -16,7 +19,13 @@ const fs = require('node:fs')
 const os = require('node:os')
 const path = require('node:path')
 
-const { downloadOutcome, uniqueSavePath } = require('../src/main/downloads')
+const {
+  downloadOutcome,
+  finishedFilename,
+  sanitisedFilename,
+  uniqueSavePath,
+  MAX_FILENAME_CHARACTERS,
+} = require('../src/main/downloads')
 
 test('a completed download is announced on both surfaces', () => {
   const outcome = downloadOutcome('completed', 'photo.jpg')
@@ -92,4 +101,56 @@ test('a name with no extension still gets a counter', () => {
   } finally {
     fs.rmSync(directory, { recursive: true, force: true })
   }
+})
+
+test('every outcome says something, whatever the state', () => {
+  // src/renderer/shell.js shows `event.message` with no wording of its own, so
+  // an outcome with an empty toast would be a download that reports nothing.
+  for (const state of ['completed', 'cancelled', 'interrupted', 'something-new']) {
+    assert.ok(downloadOutcome(state, 'photo.jpg').toast.length > 0, `empty toast for ${state}`)
+  }
+})
+
+test('the saved name wins over the name the sender suggested', () => {
+  // The dialog lets you rename. Reporting the suggestion then would name a
+  // file that does not exist.
+  assert.equal(finishedFilename('/home/u/Documents/holiday.jpg', 'IMG_0001.jpg'), 'holiday.jpg')
+})
+
+test('a dismissed dialog falls back to the suggested name', () => {
+  // `item.getSavePath()` is empty in that case, and the cancellation message
+  // still has to name something.
+  assert.equal(finishedFilename('', 'IMG_0001.jpg'), 'IMG_0001.jpg')
+})
+
+test('a sender cannot aim the dialog outside the downloads directory', () => {
+  // `path.basename` alone passes these through, and joining '..' onto the
+  // downloads directory resolves to its parent.
+  assert.equal(sanitisedFilename('..'), 'download')
+  assert.equal(sanitisedFilename('.'), 'download')
+  assert.equal(sanitisedFilename('a/../..'), 'download')
+  assert.equal(sanitisedFilename('/etc/passwd'), 'passwd')
+})
+
+test('a sender cannot leave the download unnamed', () => {
+  // An empty name would produce the toast 'Saved ', with no subject.
+  for (const empty of ['', null, undefined]) {
+    assert.equal(sanitisedFilename(empty), 'download')
+  }
+  assert.equal(downloadOutcome('completed', sanitisedFilename('')).toast, 'Saved download')
+})
+
+test('a NUL byte in the name is refused outright', () => {
+  assert.equal(sanitisedFilename('photo\u0000.jpg'), 'download')
+})
+
+test('an overlong name is truncated but keeps its extension', () => {
+  const name = `${'x'.repeat(400)}.jpg`
+  const sanitised = sanitisedFilename(name)
+  assert.ok(sanitised.length <= MAX_FILENAME_CHARACTERS, `too long: ${sanitised.length}`)
+  assert.ok(sanitised.endsWith('.jpg'), `lost the extension: ${sanitised.slice(-10)}`)
+})
+
+test('an ordinary name is passed through untouched', () => {
+  assert.equal(sanitisedFilename('holiday photo (2).jpeg'), 'holiday photo (2).jpeg')
 })
