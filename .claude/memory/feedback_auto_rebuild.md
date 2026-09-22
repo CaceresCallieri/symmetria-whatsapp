@@ -11,7 +11,7 @@ After editing application source (main process, preload, renderer), there is not
 **How to apply:**
 - Application code: no build. Just relaunch.
 - `vendor/surfingkeys` is the one exception. Run `npm run build:extension` yourself when `test -d vendor/surfingkeys` fails, or when `DEFAULT_REF` in `scripts/build-surfingkeys.js` changed. Do not hand that to the user.
-- Run `npm run verify:keyboard` after changing any of: the Electron package version, the pinned Surfingkeys ref, `electron-chrome-extensions`, `src/main/accountSession.js`, `src/main/extensionFramePolicy.js`, `src/preload/account.js`. It needs the app already running with `--remote-debugging-port=9222`; the exact two-shell procedure is in `CLAUDE.md` §"Before you change the platform". Without that, the script exits with a connection error that looks like a broken script.
+- Two paths fail silently and each has its own check: `npm run verify:keyboard` for the keyboard layer, `npm run verify:avatars` for the account picture. `AGENTS.md` §"Before you change the platform" lists which files trigger which, and holds the exact two-shell procedure. All of them need the app already running with `--remote-debugging-port=9222`; without it they exit with a connection error that reads like a broken script.
 - `npm test` needs nothing running.
 
 Related: [[project_frontend_pivot]], [[project_overview]].

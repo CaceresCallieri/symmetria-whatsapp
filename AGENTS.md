@@ -10,12 +10,14 @@ correct the other file rather than acting on it.
 
 ## Branch model
 
-- **`main` = the previous Qt6/QML implementation**, kept as a working fallback.
-  Only the user decides when the Electron work replaces it; never merge into
-  `main` or delete its content on your own initiative.
-- **`t3code/electron-frontend-research` = the Electron app.** If
-  `src/main/index.js` exists in your checkout, you are on the Electron side.
-- **`origin/dev` = the abandoned native-Qt experiment.** Do not build on it.
+`main` is the Electron application and the only long-lived branch. Work happens
+on short-lived branches off it.
+
+The Qt6/QML implementation this replaced was retired, not deleted. It is the
+history behind `main` up to the tag `qt6-final`, and the abandoned native-Qt
+experiment is at `native-qt-experiment`. Both are there to be read, never to be
+built on — `docs/PRD.md` §"Project status and direction" records what each one
+was and why it was replaced.
 
 ## Stack
 

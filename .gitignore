@@ -1,7 +1,3 @@
-# Note: the Qt/CMake ignore rules were removed with the Qt sources on this
-# branch. `main` still holds that implementation, so keep them there and
-# resolve in favour of this file's rules when the branches merge.
-
 # IDE
 .idea/
 .vscode/

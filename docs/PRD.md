@@ -40,8 +40,10 @@ close enough not to matter.
 
 The re-platform is validated, not assumed. See `spike/surfingkeys-electron`.
 
-**Branch model:** the Qt implementation remains on `main` as a working fallback
-until the Electron app has been a daily driver.
+**Branch model:** `main` is the Electron application. The Qt implementation it
+replaced is retired rather than deleted — it is the history behind `main`, at
+the tag `qt6-final`, and the abandoned native-Qt experiment is at
+`native-qt-experiment`. Read either for context; build on neither.
 
 ## Problem statement
 

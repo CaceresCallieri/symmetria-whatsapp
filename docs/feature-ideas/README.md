@@ -12,4 +12,4 @@ A parking lot for feature ideas that have been researched but not yet implemente
 
 | File | Status | One-liner |
 |------|--------|-----------|
-| [notification-voice-note-playback.md](./notification-voice-note-playback.md) | Research Complete — Not Yet Scoped | Play voice-note notifications directly from the Symmetria Shell notification center without stealing window focus. |
+| [notification-voice-note-playback.md](./notification-voice-note-playback.md) | Researched — blocked twice over | Play a voice note from its notification without taking focus. Needs raw D-Bus for the action button (P2-1), and every known way to start playback reads WhatsApp's markup. |
