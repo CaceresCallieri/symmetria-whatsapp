@@ -1,8 +1,12 @@
 [Desktop Entry]
 # The template for the launcher entry. scripts/install-desktop-entry.js writes
-# the installed copy from it, substituting @LAUNCHER@. Editing the installed
-# file in ~/.local/share/applications instead is how the previous entry came to
-# outlive the build it described.
+# the installed copy from it, filling in the launcher path below. Editing the
+# installed file in ~/.local/share/applications instead is how the previous
+# entry came to outlive the build it described.
+#
+# The placeholder token must not appear in a comment: the substitution is a
+# plain text replacement over the whole file, so a comment naming it would be
+# rewritten into nonsense.
 Type=Application
 Name=Symmetria WhatsApp
 Comment=Multi-account WhatsApp Web client with vim-style keyboard navigation
