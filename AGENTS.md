@@ -42,6 +42,12 @@ seems to need either, stop and ask.
 once. `vendor/` is git-ignored, so a fresh checkout has no keyboard layer:
 the app still runs, with no keyboard navigation and a warning in the sidebar.
 
+`npm run install:desktop` puts the app in the desktop's app launcher, and is
+the fix after the checkout moves -- every path it writes is derived from where
+the checkout is. `bin/symmetria-whatsapp` is the single definition of how the
+app starts; `npm start` delegates to it, so never restore `electron .` to the
+`start` script.
+
 ## Key decisions
 
 - **Electron over Qt6/QML, for the extension API and nothing else.** Qt

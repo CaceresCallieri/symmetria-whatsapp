@@ -1,0 +1,49 @@
+#!/bin/sh
+# How this application starts. The one definition of it.
+#
+# `npm start` delegates here, and so does the desktop entry the app launcher
+# reads. Before this file existed there were two answers to "how does the app
+# start": a package.json script, and a hand-written ~/.local/bin file that the
+# repository neither owned nor installed. The second one was left behind by the
+# retired Qt build, named a binary that no longer exists, and the launcher
+# entry pointing at it reported that the application was missing.
+#
+# Install it with `npm run install:desktop`, which symlinks this file into
+# ~/.local/bin and writes the .desktop entry that names it.
+set -eu
+
+# Resolve through however many symlinks the install used, so the launcher finds
+# the checkout it belongs to rather than whatever directory it was started in.
+# A desktop entry is launched with almost no environment and an arbitrary cwd.
+self=$(readlink -f "$0")
+APP_DIR=$(dirname "$(dirname "$self")")
+
+# There is no terminal behind a launcher, so a diagnostic has to reach the
+# notification daemon to be seen at all. Falls back to stderr for the cases
+# that do have one -- `npm start`, and a shell.
+fail() {
+    if command -v notify-send > /dev/null 2>&1; then
+        notify-send --urgency=critical 'Symmetria WhatsApp' "$1"
+    fi
+    echo "symmetria-whatsapp: $1" >&2
+    # 78 is EX_CONFIG from sysexits.h: the installation is wrong, and trying
+    # again unchanged will fail the same way.
+    exit 78
+}
+
+[ -f "$APP_DIR/package.json" ] || fail "The application directory is gone: $APP_DIR"
+
+# Electron is the Arch package `electron`, not an npm dependency, so a fresh
+# checkout that ran `npm install` still has nothing to run. See CLAUDE.md.
+command -v electron > /dev/null 2>&1 || fail 'Electron is not installed. Run: sudo pacman -S --needed electron'
+
+cd "$APP_DIR" || fail "Cannot enter $APP_DIR"
+
+# With this set, Electron starts as a plain Node process and opens no window --
+# silently, with a zero exit code. It is exported by some development shells
+# and inherited by anything they launch, so a launcher has to clear it.
+unset ELECTRON_RUN_AS_NODE
+
+# Arguments pass through: `npm start -- --remote-debugging-port=9222` is how
+# the verification scripts in scripts/ reach the app.
+exec electron . "$@"

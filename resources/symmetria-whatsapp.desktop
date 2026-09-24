@@ -1,0 +1,26 @@
+[Desktop Entry]
+# The template for the launcher entry. scripts/install-desktop-entry.js writes
+# the installed copy from it, substituting @LAUNCHER@. Editing the installed
+# file in ~/.local/share/applications instead is how the previous entry came to
+# outlive the build it described.
+Type=Application
+Name=Symmetria WhatsApp
+Comment=Multi-account WhatsApp Web client with vim-style keyboard navigation
+# Absolute, and substituted at install time rather than checked in. An app
+# launcher runs a desktop entry with a login-shell environment that does not
+# have ~/.local/bin on PATH, so a bare command name here is exactly the failure
+# this entry replaces.
+TryExec=@LAUNCHER@
+Exec=@LAUNCHER@
+# resources/icons/whatsapp-<size>x<size>.png, installed into the hicolor theme
+# under this name by the same script.
+Icon=symmetria-whatsapp
+Terminal=false
+StartupNotify=false
+Categories=Network;InstantMessaging;Chat;
+# The Wayland app_id, which Electron derives from `app.setName()` in
+# src/main/index.js, and which the Hyprland window rules match as well. Drift
+# here fails silently -- the launcher stops recognising the open window as this
+# entry's, and nothing looks broken. test/desktopEntry.test.js pins the two
+# strings together.
+StartupWMClass=symmetria-whatsapp

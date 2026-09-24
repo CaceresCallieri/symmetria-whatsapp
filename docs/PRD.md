@@ -88,9 +88,18 @@ src/
 │   └── channels.js           IPC channel names, used by main and both preloads
 └── renderer/                 the app chrome: the account sidebar
 
+bin/
+└── symmetria-whatsapp        how the app starts: `npm start` and the desktop
+                              entry both go through it, so there is one answer
+resources/
+├── icons/                    the application icon, per size
+└── symmetria-whatsapp.desktop   the launcher entry, as a template
+
 test/                         node --test suite (npm test)
 scripts/                      build and verification harnesses, driven from
-                              outside the app so it carries no test hooks
+                              outside the app so it carries no test hooks;
+                              `install-desktop-entry.js` is the odd one out --
+                              it registers the checkout with the desktop
 ```
 
 The window is a frameless, undecorated, transparent `BrowserWindow`. Its own
@@ -225,7 +234,7 @@ follow to the others.
 | P2-2 | Do Not Disturb, per account or global | Not started |
 | P2-3 | Shared Surfingkeys configuration across accounts | Not started |
 | P2-4 | Per-account custom CSS | Not started |
-| P2-5 | Start minimized, and an autostart entry | Not started |
+| P2-5 | Start minimized, and an autostart entry | Partly done — `npm run install:desktop` registers the launcher entry, the icon and the `~/.local/bin` symlink from this checkout, and re-running it is the fix after the checkout moves. Starting minimized and copying the entry into `~/.config/autostart` are still open |
 
 ## Success criteria
 
