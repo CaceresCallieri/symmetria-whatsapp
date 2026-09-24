@@ -28,9 +28,9 @@ seems to need either, stop and ask.
 ## Stack
 
 - **Runtime:** Electron, from the Arch package `electron`. It is a prerequisite
-  of `npm start` and is not installed by `npm install`. Last verified on 42.9.3
-  and 43.7.0 — on any other version, run the keyboard-layer verification below
-  before trusting it.
+  of `npm start` and is not installed by `npm install`. Last verified on 42.9.3,
+  43.7.0 and 44.4.3 — on any other version, run the keyboard-layer verification
+  below before trusting it.
 - **Language:** JavaScript, no build step for application code
 - **Keyboard layer:** Surfingkeys, loaded as a real Chrome extension via
   `electron-chrome-extensions`
