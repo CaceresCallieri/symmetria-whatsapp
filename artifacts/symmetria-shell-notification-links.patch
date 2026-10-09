@@ -1,0 +1,148 @@
+diff --git a/components/NotificationBodyText.qml b/components/NotificationBodyText.qml
+new file mode 100644
+index 0000000..a8eccd1
+--- /dev/null
++++ b/components/NotificationBodyText.qml
+@@ -0,0 +1,12 @@
++import qs.services
++import Symmetria
++import QtQuick
++
++StyledText {
++    id: root
++
++    property string bodyText: ""
++
++    textFormat: Text.RichText
++    text: CUtils.notificationBodyHtml(root.bodyText, Colours.palette.m3primary, root.font)
++}
+diff --git a/modules/notifications/Notification.qml b/modules/notifications/Notification.qml
+index 4382686..e495fa2 100644
+--- a/modules/notifications/Notification.qml
++++ b/modules/notifications/Notification.qml
+@@ -458,7 +458,7 @@ PillCard {
+                 }
+             }
+ 
+-            StyledText {
++            NotificationBodyText {
+                 id: bodyPreview
+ 
+                 anchors.left: summary.left
+@@ -467,8 +467,7 @@ PillCard {
+                 anchors.rightMargin: Appearance.spacing.small
+ 
+                 animate: true
+-                textFormat: Text.MarkdownText
+-                text: bodyPreviewMetrics.elidedText
++                bodyText: bodyPreviewMetrics.elidedText
+                 color: Colours.palette.m3onSurfaceVariant
+                 font.pointSize: Appearance.font.size.small
+ 
+@@ -489,7 +488,7 @@ PillCard {
+                 elideWidth: bodyPreview.width
+             }
+ 
+-            StyledText {
++            NotificationBodyText {
+                 id: body
+ 
+                 anchors.left: summary.left
+@@ -498,8 +497,7 @@ PillCard {
+                 anchors.rightMargin: Appearance.spacing.small
+ 
+                 animate: true
+-                textFormat: Text.MarkdownText
+-                text: root.modelData.body
++                bodyText: root.modelData.body
+                 color: Colours.palette.m3onSurfaceVariant
+                 font.pointSize: Appearance.font.size.small
+                 wrapMode: Text.WrapAtWordBoundaryOrAnywhere
+diff --git a/modules/sidebar/Notif.qml b/modules/sidebar/Notif.qml
+index 5a31764..0630c19 100644
+--- a/modules/sidebar/Notif.qml
++++ b/modules/sidebar/Notif.qml
+@@ -123,12 +123,11 @@ StyledRect {
+ 
+             spacing: Appearance.spacing.smaller
+ 
+-            StyledText {
++            NotificationBodyText {
+                 id: body
+ 
+                 Layout.fillWidth: true
+-                textFormat: Text.MarkdownText
+-                text: root.modelData.body.replace(/(.)\n(?!\n)/g, "$1\n\n") || qsTr("No body here! :/")
++                bodyText: root.modelData.body.replace(/(.)\n(?!\n)/g, "$1\n\n") || qsTr("No body here! :/")
+                 color: root.modelData.urgency === "critical" ? Colours.palette.m3secondary : Colours.palette.m3outline
+                 wrapMode: Text.WordWrap
+ 
+diff --git a/plugin/src/Symmetria/cutils.cpp b/plugin/src/Symmetria/cutils.cpp
+index 561ce4e..d124d6c 100644
+--- a/plugin/src/Symmetria/cutils.cpp
++++ b/plugin/src/Symmetria/cutils.cpp
+@@ -7,6 +7,9 @@
+ #include <qfileinfo.h>
+ #include <qfuturewatcher.h>
+ #include <qqmlengine.h>
++#include <qtextcursor.h>
++#include <qtextdocument.h>
++#include <qtextobject.h>
+ 
+ namespace symmetria {
+ 
+@@ -119,6 +122,33 @@ bool CUtils::deleteFile(const QUrl& path) const {
+     return QFile::remove(path.toLocalFile());
+ }
+ 
++QString CUtils::notificationBodyHtml(const QString& markdown, const QColor& linkColor, const QFont& font) const {
++    if (markdown.isEmpty()) {
++        return QString();
++    }
++
++    // Qt ignores Text.linkColor for MarkdownText. Keep Qt's Markdown parser,
++    // then set the anchor foreground in the document before exporting HTML.
++    QTextDocument document;
++    document.setDefaultFont(font);
++    document.setMarkdown(markdown);
++    for (auto block = document.begin(); block.isValid(); block = block.next()) {
++        for (auto fragmentIterator = block.begin(); !fragmentIterator.atEnd(); ++fragmentIterator) {
++            const auto fragment = fragmentIterator.fragment();
++            if (!fragment.isValid() || !fragment.charFormat().isAnchor()) {
++                continue;
++            }
++            QTextCursor cursor(&document);
++            cursor.setPosition(fragment.position());
++            cursor.setPosition(fragment.position() + fragment.length(), QTextCursor::KeepAnchor);
++            QTextCharFormat format;
++            format.setForeground(linkColor);
++            cursor.mergeCharFormat(format);
++        }
++    }
++    return document.toHtml();
++}
++
+ QString CUtils::toLocalFile(const QUrl& url) const {
+     if (!url.isLocalFile()) {
+         qWarning() << "CUtils::toLocalFile: given url is not a local file" << url;
+diff --git a/plugin/src/Symmetria/cutils.hpp b/plugin/src/Symmetria/cutils.hpp
+index 1c4dccc..f8914d9 100644
+--- a/plugin/src/Symmetria/cutils.hpp
++++ b/plugin/src/Symmetria/cutils.hpp
+@@ -1,6 +1,8 @@
+ #pragma once
+ 
+ #include <QtQuick/qquickitem.h>
++#include <qcolor.h>
++#include <qfont.h>
+ #include <qobject.h>
+ #include <qqmlintegration.h>
+ 
+@@ -24,6 +26,7 @@ public:
+     Q_INVOKABLE bool copyFile(const QUrl& source, const QUrl& target, bool overwrite = true) const;
+     Q_INVOKABLE bool deleteFile(const QUrl& path) const;
+     Q_INVOKABLE QString toLocalFile(const QUrl& url) const;
++    Q_INVOKABLE QString notificationBodyHtml(const QString& markdown, const QColor& linkColor, const QFont& font) const;
+ };
+ 
+ } // namespace symmetria
