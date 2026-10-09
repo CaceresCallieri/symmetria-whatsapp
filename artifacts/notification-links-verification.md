@@ -9,11 +9,17 @@ Source checkout: /home/dev/symetria-shell-notification-links
 Patch baseline: CaceresCallieri/symetria-shell commit
 77cdfafdb2e56394dd16517b6ffd67baf62103de.
 
-The patch adds one shared NotificationBodyText component for the popup preview,
-expanded popup, and expanded notification history. CUtils parses Markdown with
-QTextDocument, sets the anchor foreground to the theme primary colour, and exports
-HTML. Qt renders the HTML with the existing notification font. Link targets and
-the notification activation handlers remain intact.
+Canonical source: PR #70: fix(notifications): use readable theme colours for links.
+https://github.com/CaceresCallieri/symetria-shell/pull/70
+The patch is a snapshot through commit 76f372a. Future fixes belong in the shell
+repository rather than in this snapshot.
+
+The collapsed popup preview uses plain text with direct elision. The patch adds
+one shared NotificationBodyText component for the expanded popup and expanded
+notification history. CUtils parses Markdown with QTextDocument, sets the anchor
+foreground to the theme primary colour, and exports HTML. Qt renders the HTML
+with the existing notification font. Link targets and the notification activation
+handlers remain intact.
 
 ## Verification
 
@@ -24,17 +30,27 @@ the notification activation handlers remain intact.
   renderer. Only the theme and appearance services used probe values.
   The harness compiled CUtils and its moc source, then registered CUtils as a
   QML singleton with qmlRegisterSingletonType. It did not build the complete plugin.
-- Passed nine assertions for the baseline colour, three themed bodies, three
-  link targets, and unchanged width and height for the screenshot URL.
+- Passed nine assertions for the baseline colour, a plain preview, two themed
+  bodies, two link targets, a non-clickable preview, and unchanged width and
+  height for the screenshot URL.
 - Captured and inspected notification-links-before-after.png. The baseline is
-  blue. The fixed bodies use the theme primary colour, #bdc2c7.
+  blue. The expanded bodies use the theme primary colour, #bdc2c7. The preview
+  uses the normal body colour, #bec2c6.
 - Passed QML formatting checks for all three changed QML files.
 - QML lint exited zero. Quickshell and the complete Symmetria plugin are absent
   here, so lint reported unresolved imports. The standalone Qt renderer loaded
   the changed native method and shared body component successfully.
-- Passed all 23 shell tests and all 73 WhatsApp tests.
+- Passed all 24 shell tests and all 73 WhatsApp tests. The new shell test compiles
+  the actual CUtils implementation and checks adjacent and formatted anchors,
+  two theme colours, Unicode, non-link formatting, backgrounds, and empty bodies.
 - Passed all eight WhatsApp notification checks through Electron and D-Bus.
 - Checked that the patch applies to an unmodified copy of the baseline.
+- Counted 761 theme pixels and zero blue pixels in the after region of the image.
+  The image background is #171819.
+- Passed the declared Python checks: ruff and pyrefly 1.2.0.
+- The source review fixed fragment iteration safety, preview elision, theme-update
+  animations, and default HTML underlines. The source records the necessary
+  RichText workaround and its removal condition.
 - Stopped the Electron verification service after the checks.
 
 ## Installation status
@@ -51,10 +67,11 @@ libqalculate, aubio, and libcava, so the complete plugin build did not run here.
 The shell instructions prohibit starting or restarting the live shell. The
 operator must restart it after the plugin and QML changes are installed.
 
-Apply the patch from the root of the Symmetria Shell checkout:
+After the source PR merges, update the Symmetria Shell checkout and rebuild:
 
 ```bash
-git apply /absolute/path/to/symmetria-shell-notification-links.patch
+git switch main
+git pull --ff-only
 cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/ -DINSTALL_QSCONFDIR="$HOME/.config/quickshell/symmetria"
 cmake --build build
 sudo cmake --install build
@@ -64,3 +81,8 @@ rm -rf "$HOME/.cache/quickshell/qmlcache"
 
 Use the operator's normal shell restart procedure after installation. Automated
 commands must not start or restart the live shell.
+
+To reproduce the patch on an unmodified copy of the baseline instead, run
+`git apply /absolute/path/to/symmetria-shell-notification-links.patch` before the
+build commands. Do not apply the snapshot to a checkout that already contains
+the merged source fix.

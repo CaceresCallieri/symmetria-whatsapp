@@ -1,9 +1,9 @@
 diff --git a/components/NotificationBodyText.qml b/components/NotificationBodyText.qml
 new file mode 100644
-index 0000000..a8eccd1
+index 0000000..6d98250
 --- /dev/null
 +++ b/components/NotificationBodyText.qml
-@@ -0,0 +1,12 @@
+@@ -0,0 +1,14 @@
 +import qs.services
 +import Symmetria
 +import QtQuick
@@ -13,47 +13,86 @@ index 0000000..a8eccd1
 +
 +    property string bodyText: ""
 +
++    // WORKAROUND: Qt's Markdown links ignore linkColor, and the HTML export needs
++    // RichText to preserve CSS formatting. Remove when Qt supports themed Markdown links.
 +    textFormat: Text.RichText
 +    text: CUtils.notificationBodyHtml(root.bodyText, Colours.palette.m3primary, root.font)
 +}
+diff --git a/docs/qml-pitfalls.md b/docs/qml-pitfalls.md
+index ea14aa0..7351957 100644
+--- a/docs/qml-pitfalls.md
++++ b/docs/qml-pitfalls.md
+@@ -2,6 +2,24 @@
+ 
+ Hard-won lessons from past bugs. Each section documents a non-obvious behavior that has caused real issues in this codebase.
+ 
++## Markdown notification links ignore linkColor
++
++Qt's Markdown importer sets an anchor foreground before the QML text renderer
++applies `Text.linkColor`. Setting `linkColor` changes the property but leaves the
++rendered Markdown link blue. Check the rendered pixels, not only the property.
++
++NotificationBodyText deliberately uses `Text.RichText` for Qt-exported HTML.
++This is an exception to the usual preference for `Text.PlainText` and
++`Text.StyledText`. Qt's HTML export preserves Markdown formatting and the themed
++anchor foreground. `Text.StyledText` does not support all of the exported CSS.
++
++HTML import also adds default anchor underlines. The export includes an anchor
++stylesheet to preserve the original Markdown underline policy. The native test
++checks the exported document's formatting and its background.
++
++Keep the collapsed preview as plain text. Elide the rendered text directly;
++eliding Markdown syntax can break a link and measure a different glyph width.
++
+ ## Required Property Shadowing in Delegates
+ 
+ In QML delegates with `pragma ComponentBehavior: Bound`, there are **two syntaxes** for required properties that behave completely differently:
 diff --git a/modules/notifications/Notification.qml b/modules/notifications/Notification.qml
-index 4382686..e495fa2 100644
+index 4382686..cc93012 100644
 --- a/modules/notifications/Notification.qml
 +++ b/modules/notifications/Notification.qml
-@@ -458,7 +458,7 @@ PillCard {
-                 }
-             }
- 
--            StyledText {
-+            NotificationBodyText {
-                 id: bodyPreview
- 
-                 anchors.left: summary.left
-@@ -467,8 +467,7 @@ PillCard {
+@@ -467,10 +467,11 @@ PillCard {
                  anchors.rightMargin: Appearance.spacing.small
  
                  animate: true
 -                textFormat: Text.MarkdownText
 -                text: bodyPreviewMetrics.elidedText
-+                bodyText: bodyPreviewMetrics.elidedText
++                text: root.modelData.body.replace(/\n/g, " ")
                  color: Colours.palette.m3onSurfaceVariant
                  font.pointSize: Appearance.font.size.small
++                elide: Text.ElideRight
++                maximumLineCount: 1
  
-@@ -489,7 +488,7 @@ PillCard {
-                 elideWidth: bodyPreview.width
+                 opacity: root.expanded ? 0 : 1
+ 
+@@ -479,17 +480,7 @@ PillCard {
+                 }
              }
  
+-            TextMetrics {
+-                id: bodyPreviewMetrics
+-
+-                text: root.modelData.body
+-                font.family: bodyPreview.font.family
+-                font.pointSize: bodyPreview.font.pointSize
+-                elide: Text.ElideRight
+-                elideWidth: bodyPreview.width
+-            }
+-
 -            StyledText {
 +            NotificationBodyText {
                  id: body
  
                  anchors.left: summary.left
-@@ -498,8 +497,7 @@ PillCard {
+@@ -497,9 +488,9 @@ PillCard {
+                 anchors.top: summary.bottom
                  anchors.rightMargin: Appearance.spacing.small
  
-                 animate: true
+-                animate: true
 -                textFormat: Text.MarkdownText
 -                text: root.modelData.body
++                // Theme and font updates also change the exported HTML.
++                // Keep those updates from replaying the message text animation.
 +                bodyText: root.modelData.body
                  color: Colours.palette.m3onSurfaceVariant
                  font.pointSize: Appearance.font.size.small
@@ -78,12 +117,14 @@ index 5a31764..0630c19 100644
                  wrapMode: Text.WordWrap
  
 diff --git a/plugin/src/Symmetria/cutils.cpp b/plugin/src/Symmetria/cutils.cpp
-index 561ce4e..d124d6c 100644
+index 561ce4e..0c9051c 100644
 --- a/plugin/src/Symmetria/cutils.cpp
 +++ b/plugin/src/Symmetria/cutils.cpp
-@@ -7,6 +7,9 @@
+@@ -6,7 +6,11 @@
+ #include <qdir.h>
  #include <qfileinfo.h>
  #include <qfuturewatcher.h>
++#include <qlist.h>
  #include <qqmlengine.h>
 +#include <qtextcursor.h>
 +#include <qtextdocument.h>
@@ -91,35 +132,44 @@ index 561ce4e..d124d6c 100644
  
  namespace symmetria {
  
-@@ -119,6 +122,33 @@ bool CUtils::deleteFile(const QUrl& path) const {
+@@ -119,6 +123,42 @@ bool CUtils::deleteFile(const QUrl& path) const {
      return QFile::remove(path.toLocalFile());
  }
  
 +QString CUtils::notificationBodyHtml(const QString& markdown, const QColor& linkColor, const QFont& font) const {
++    // An empty string lets Notification.qml collapse the body to zero height.
 +    if (markdown.isEmpty()) {
 +        return QString();
 +    }
 +
-+    // Qt ignores Text.linkColor for MarkdownText. Keep Qt's Markdown parser,
-+    // then set the anchor foreground in the document before exporting HTML.
++    // The Markdown importer assigns the anchor foreground before Text.linkColor
++    // can apply. Export the themed foreground through Qt's own HTML format.
 +    QTextDocument document;
++    // toHtml() writes the default font into the body style and overrides QML's font.
 +    document.setDefaultFont(font);
 +    document.setMarkdown(markdown);
++    QList<QTextCursor> anchorCursors;
 +    for (auto block = document.begin(); block.isValid(); block = block.next()) {
 +        for (auto fragmentIterator = block.begin(); !fragmentIterator.atEnd(); ++fragmentIterator) {
 +            const auto fragment = fragmentIterator.fragment();
-+            if (!fragment.isValid() || !fragment.charFormat().isAnchor()) {
++            if (!fragment.charFormat().isAnchor()) {
 +                continue;
 +            }
 +            QTextCursor cursor(&document);
 +            cursor.setPosition(fragment.position());
 +            cursor.setPosition(fragment.position() + fragment.length(), QTextCursor::KeepAnchor);
-+            QTextCharFormat format;
-+            format.setForeground(linkColor);
-+            cursor.mergeCharFormat(format);
++            anchorCursors.append(cursor);
 +        }
 +    }
-+    return document.toHtml();
++    // Formatting can merge adjacent fragments. Finish iteration before editing.
++    for (auto& cursor : anchorCursors) {
++        QTextCharFormat format;
++        format.setForeground(linkColor);
++        cursor.mergeCharFormat(format);
++    }
++    // HTML anchors default to underlined. Explicit span formatting from toHtml()
++    // still preserves an underline that the original Markdown actually requested.
++    return QStringLiteral("<style>a { text-decoration: none; }</style>") + document.toHtml();
 +}
 +
  QString CUtils::toLocalFile(const QUrl& url) const {
@@ -146,3 +196,176 @@ index 1c4dccc..f8914d9 100644
  };
  
  } // namespace symmetria
+diff --git a/scripts/tests/test_notification_body.cpp b/scripts/tests/test_notification_body.cpp
+new file mode 100644
+index 0000000..b08a729
+--- /dev/null
++++ b/scripts/tests/test_notification_body.cpp
+@@ -0,0 +1,82 @@
++#include "cutils.hpp"
++
++#include <QGuiApplication>
++#include <QTextCursor>
++#include <QTextDocument>
++#include <QTextFrame>
++#include <iostream>
++#include <stdexcept>
++
++namespace {
++void require(bool condition, const char* message) {
++    if (!condition) {
++        throw std::runtime_error(message);
++    }
++}
++
++QTextCharFormat formatAt(QTextDocument& document, int position) {
++    QTextCursor cursor(&document);
++    cursor.setPosition(position);
++    cursor.setPosition(position + 1, QTextCursor::KeepAnchor);
++    return cursor.charFormat();
++}
++
++void verifyBody(const symmetria::CUtils& utils, const QString& markdown, const QColor& linkColor) {
++    const QFont font("monospace", 13);
++    QTextDocument original;
++    original.setDefaultFont(font);
++    original.setMarkdown(markdown);
++
++    QTextDocument rendered;
++    rendered.setHtml(utils.notificationBodyHtml(markdown, linkColor, font));
++    require(rendered.toPlainText() == original.toPlainText(), "message text changed");
++    require(rendered.rootFrame()->frameFormat().background().style() == Qt::NoBrush,
++        "the exported body introduces a background");
++
++    for (int position = 0; position < original.characterCount() - 1; ++position) {
++        if (original.characterAt(position) == QChar::ParagraphSeparator) {
++            continue;
++        }
++        const auto before = formatAt(original, position);
++        const auto after = formatAt(rendered, position);
++        require(before.isAnchor() == after.isAnchor(), "anchor membership changed");
++        require(before.anchorHref() == after.anchorHref(), "link target changed");
++        require(before.fontWeight() == after.fontWeight(), "bold formatting changed");
++        require(before.fontItalic() == after.fontItalic(), "italic formatting changed");
++        require(before.fontUnderline() == after.fontUnderline(), "underline formatting changed");
++        if (before.isAnchor()) {
++            require(after.foreground().color() == linkColor, "a link keeps the wrong foreground");
++        } else {
++            require(before.foreground() == after.foreground(), "non-link foreground changed");
++        }
++    }
++}
++} // namespace
++
++int main(int argc, char** argv) {
++    QGuiApplication app(argc, argv);
++    try {
++        const symmetria::CUtils utils;
++        const QFont font("monospace", 13);
++        require(utils.notificationBodyHtml("", QColor("#bdc2c7"), font).isEmpty(),
++            "an empty body creates visible HTML");
++        const QStringList bodies {
++            "Keep <3 & > intact.",
++            "**Meet** https://meet.google.com/rhy-zjiy-gpc?a=1&b=2\n\n[Second link](https://example.com/)",
++            "[**bold** and *italic*](https://example.com/?a=1&b=2)",
++            "[one](https://example.com/)[two](https://example.org/)",
++            "[café 😊](https://example.com/#résumé) and plain Unicode: 日本語",
++            "<span style=\"color:#ff0000\">red text</span> https://example.com/"
++        };
++        for (const auto& colour : {QColor("#bdc2c7"), QColor("#25d366")}) {
++            for (const auto& body : bodies) {
++                verifyBody(utils, body, colour);
++            }
++        }
++        std::cout << "PASS notification links, formatting, literal text, theme colours, background, empty body\n";
++        return 0;
++    } catch (const std::exception& error) {
++        std::cerr << error.what() << '\n';
++        return 1;
++    }
++}
+diff --git a/scripts/tests/test_notification_body.py b/scripts/tests/test_notification_body.py
+new file mode 100644
+index 0000000..c1f2ae9
+--- /dev/null
++++ b/scripts/tests/test_notification_body.py
+@@ -0,0 +1,79 @@
++"""Exercise CUtils against Qt without building the complete shell plugin."""
++
++# Every subprocess uses installed Qt tooling or the locally compiled fixture.
++# No command argument comes from a notification body.
++# ruff: noqa: S603
++
++import os
++import shlex
++import shutil
++import subprocess
++from pathlib import Path
++
++import pytest
++
++REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
++QT_MODULES = ["Qt6Quick", "Qt6Qml", "Qt6Concurrent"]
++
++
++def qt_flags(package_config: str, option: str) -> list[str]:
++    output = subprocess.check_output([package_config, option, *QT_MODULES], text=True)
++    return shlex.split(output)
++
++
++def test_notification_body_preserves_text_and_themes_links(tmp_path: Path) -> None:
++    compiler = shutil.which("c++")
++    package_config = shutil.which("pkg-config")
++    if compiler is None or package_config is None:
++        pytest.skip("The native notification test needs c++ and pkg-config")
++
++    available = subprocess.run([package_config, "--exists", *QT_MODULES], check=False)
++    if available.returncode != 0:
++        pytest.skip("The native notification test needs the Qt6 development modules")
++
++    library_tools = subprocess.check_output(
++        [package_config, "--variable=libexecdir", "Qt6Core"], text=True
++    ).strip()
++    moc = Path(library_tools) / "moc"
++    if not moc.is_file():
++        pytest.skip("The native notification test needs Qt6 moc")
++
++    native_source = REPOSITORY_ROOT / "plugin/src/Symmetria"
++    generated_source = tmp_path / "moc_cutils.cpp"
++    executable = tmp_path / "verify-notification-body"
++    subprocess.run(
++        [
++            str(moc),
++            *qt_flags(package_config, "--cflags"),
++            str(native_source / "cutils.hpp"),
++            "-o",
++            str(generated_source),
++        ],
++        check=True,
++    )
++    subprocess.run(
++        [
++            compiler,
++            "-std=c++20",
++            "-fPIC",
++            "-I",
++            str(native_source),
++            *qt_flags(package_config, "--cflags"),
++            str(Path(__file__).with_suffix(".cpp")),
++            str(generated_source),
++            str(native_source / "cutils.cpp"),
++            "-o",
++            str(executable),
++            *qt_flags(package_config, "--libs"),
++        ],
++        check=True,
++    )
++    result = subprocess.run(
++        [str(executable)],
++        env={**os.environ, "QT_QPA_PLATFORM": "offscreen"},
++        capture_output=True,
++        text=True,
++        timeout=30,
++        check=False,
++    )
++    assert result.returncode == 0, result.stdout + result.stderr
