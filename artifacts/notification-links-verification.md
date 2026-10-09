@@ -11,7 +11,7 @@ Patch baseline: CaceresCallieri/symetria-shell commit
 
 Canonical source: PR #70: fix(notifications): use readable theme colours for links.
 https://github.com/CaceresCallieri/symetria-shell/pull/70
-The patch is a snapshot through commit 76f372a. Future fixes belong in the shell
+The patch is a snapshot through commit 1720ddd. Future fixes belong in the shell
 repository rather than in this snapshot.
 
 The collapsed popup preview uses plain text with direct elision. The patch adds
@@ -48,6 +48,9 @@ handlers remain intact.
 - Counted 761 theme pixels and zero blue pixels in the after region of the image.
   The image background is #171819.
 - Passed the declared Python checks: ruff and pyrefly 1.2.0.
+- GitHub's first type check found that its isolated environment lacks pytest.
+  The wrapper now uses standard-library unittest. The isolated uvx type check
+  and direct unittest execution passed without pytest imports.
 - The source review fixed fragment iteration safety, preview elision, theme-update
   animations, and default HTML underlines. The source records the necessary
   RichText workaround and its removal condition.

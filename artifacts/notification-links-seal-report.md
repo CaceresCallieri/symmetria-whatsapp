@@ -39,6 +39,7 @@ Repository: /home/dev/symetria-shell-notification-links
   existing notification views.
 - Reviewer: code-reviewer on Opus.
 - Fixes: 76f372a — fix(notifications): preserve formatting and bound the preview.
+- CI repair: 1720ddd — fix(tests): run the notification regression without pytest imports.
 - Eleven findings: nine fixed or covered by another fix, and two skipped.
 - An additional behavioural test found default HTML anchor underlines. The fixes
   commit preserves the original underline policy.
@@ -90,10 +91,18 @@ the exact progress diff and verified the proposed fixes against the baseline.
 | Repository | Progress | Effort | Findings | Fixed or covered | Skipped | Fixes | Remaining files |
 |---|---|---|---|---|---|---|---|
 | WhatsApp workspace | af26577 | medium | 7 | 3, including the test assigned to Shell | 4 | 6ee4843 and artifact refresh | 0 |
-| Symmetria Shell | 03d73bd | high | 11 | 9 | 2 | 76f372a | 0 |
+| Symmetria Shell | 03d73bd | high | 11 | 9 | 2 | 76f372a and 1720ddd | 0 |
 
 The test finding overlaps between the two reviewers. The rollup counts each
 reviewer's findings separately. QML advisory findings total 39.
+
+The first GitHub lint run failed because the new test wrapper imported pytest,
+which is absent from the isolated type-check environment. That missing import
+also prevented type narrowing at the skip guards. Commit 1720ddd uses unittest
+and TemporaryDirectory from the standard library. The isolated
+`uvx pyrefly@1.2.0 check`, the full 24-test suite, and direct unittest execution
+all passed after the repair. The source records why pytest must not be
+reintroduced into this wrapper.
 
 The full shell plugin build and live laptop installation did not run. This
 server lacks the full build dependencies, and laptop SSH access was denied.
