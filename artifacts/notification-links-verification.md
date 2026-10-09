@@ -22,6 +22,8 @@ the notification activation handlers remain intact.
   the anchor foreground, and an empty body.
 - Loaded the actual NotificationBodyText and StyledText components in a Qt QML
   renderer. Only the theme and appearance services used probe values.
+  The harness compiled CUtils and its moc source, then registered CUtils as a
+  QML singleton with qmlRegisterSingletonType. It did not build the complete plugin.
 - Passed nine assertions for the baseline colour, three themed bodies, three
   link targets, and unchanged width and height for the screenshot URL.
 - Captured and inspected notification-links-before-after.png. The baseline is
@@ -48,3 +50,17 @@ libqalculate, aubio, and libcava, so the complete plugin build did not run here.
 
 The shell instructions prohibit starting or restarting the live shell. The
 operator must restart it after the plugin and QML changes are installed.
+
+Apply the patch from the root of the Symmetria Shell checkout:
+
+```bash
+git apply /absolute/path/to/symmetria-shell-notification-links.patch
+cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/ -DINSTALL_QSCONFDIR="$HOME/.config/quickshell/symmetria"
+cmake --build build
+sudo cmake --install build
+sudo chown -R "$USER:$USER" "$HOME/.config/quickshell/symmetria"
+rm -rf "$HOME/.cache/quickshell/qmlcache"
+```
+
+Use the operator's normal shell restart procedure after installation. Automated
+commands must not start or restart the live shell.
